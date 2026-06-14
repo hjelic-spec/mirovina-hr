@@ -2579,19 +2579,23 @@ function EduView() {
           <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, maxWidth: 560 }}>
             Interaktivni vodiči za svaki parametar koji utječe na vašu mirovinu —
             s live grafovima i stvarnim primjerima. Saznajte što utječe na visinu vaše
-            mirovine i što možete napraviti kako da vaša mirovina bude veća.
+            mirovine i što možete napraviti da vaša mirovina bude veća.
           </p>
           <div style={{ display: "flex", gap: 20, marginTop: 20, flexWrap: "wrap" }}>
             {[
               { v: `${fmt(mirovina_std)} EUR`, l: "Vaša projicirana mirovina" },
               { v: `${fmt(kapital2)} EUR`,     l: "Akumulirani kapital II. stupa" },
-              { v: `${pct(mirovina_std / plaça)}`, l: "Stopa zamjene" },
+              { v: `${pct(mirovina_std / plaça)}`, l: "Stopa zamjene *" },
             ].map((it, i) => (
               <div key={i} style={{ background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "10px 16px" }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.goldL, fontFamily: "'Playfair Display',serif" }}>{it.v}</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>{it.l}</div>
               </div>
             ))}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 14 }}>
+            * Stopa zamjene = omjer vaše mirovine i vaše bruto plaće. Pokazuje koliko će se
+            vaš životni standard zadržati u mirovini u odnosu na plaću tijekom radnog vijeka.
           </div>
         </div>
 
