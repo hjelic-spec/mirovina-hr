@@ -2578,8 +2578,8 @@ function EduView() {
           </h1>
           <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, maxWidth: 560 }}>
             Interaktivni vodiči za svaki parametar koji utječe na vašu mirovinu —
-            s live grafovima i stvarnim primjerima. Shvatite formule, usporedite scenarije
-            i procijenite potrebu za promjenom sustava.
+            s live grafovima i stvarnim primjerima. Saznajte što utječe na visinu vaše
+            mirovine i što možete napraviti kako da vaša mirovina bude veća.
           </p>
           <div style={{ display: "flex", gap: 20, marginTop: 20, flexWrap: "wrap" }}>
             {[
