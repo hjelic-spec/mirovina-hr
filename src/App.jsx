@@ -2878,14 +2878,34 @@ function EduView() {
           <div style={{ position: "absolute", right: -20, top: -20, fontSize: 120, opacity: 0.06 }}>🏛</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase",
             letterSpacing: "0.1em", marginBottom: 8 }}>Edukacijski centar</div>
-          <h1 style={{ fontSize: 28, marginBottom: 12, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-            Kako funkcionira hrvatska mirovina?
+          <h1 style={{ fontSize: 28, marginBottom: 14, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+            Vaša mirovina se gradi danas — ne kad odete u mirovinu.
           </h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, maxWidth: 560 }}>
-            Interaktivni vodiči za svaki parametar koji utječe na vašu mirovinu —
-            s live grafovima i stvarnim primjerima. Saznajte što utječe na visinu vaše
-            mirovine i što možete napraviti da vaša mirovina bude veća.
+          <p style={{ fontSize: 17, fontWeight: 700, color: "rgba(255,255,255,0.95)", lineHeight: 1.6, maxWidth: 640, marginBottom: 14 }}>
+            Većina ljudi ne razmišlja o mirovini dok je ne počne primati. To je kasno
+            — previše kasno da se išta promijeni.
           </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 640 }}>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
+              Svaka godina rada ostavlja trag u vašem mirovinskom dosjeu. Svaki postotak
+              plaće, svaki valorizirani bod, svaki mjesec staža — sve se zbraja ili
+              oduzima od iznosa koji ćete primati do kraja života.
+            </p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
+              Razlika između osobe koja razumije sustav i one koja ga ne razumije
+              može biti i nekoliko stotina eura mirovine svaki mjesec — zauvijek.
+            </p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
+              Ovdje ćete naučiti što je PVB i zašto pregovaranje o plaći danas izravno
+              povećava vašu mirovinu za 30 godina. Zašto jedan jedini mjesec ranijeg
+              odlaska u mirovinu trajno smanjuje svaki vaš budući ček. Zašto 55 eura
+              mjesečno u trećem stupu može biti vrijednije od iznosa koji u njega ulažete.
+            </p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
+              Nijedan od ovih podataka nije skriven — ali nitko vam ih nije objasnio
+              jasno, s konkretnim brojevima i vašim primjerom. Do sad.
+            </p>
+          </div>
           <div style={{ display: "flex", gap: 20, marginTop: 20, flexWrap: "wrap" }}>
             {[
               { v: `${fmt(mirovina_std)} EUR`, l: "Vaša projicirana mirovina" },
