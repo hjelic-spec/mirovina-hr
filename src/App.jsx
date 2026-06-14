@@ -2851,20 +2851,19 @@ function EduView() {
   const tw = (v) => `${(v/1000).toFixed(0)}k`;
 
   return (
-    <div className="fadeIn" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 28, alignItems: "start" }}>
+    <div className="fadeIn">
 
-      {/* Sticky sidebar nav */}
-      <div style={{ position: "sticky", top: 80, background: C.white, borderRadius: 14,
-        border: `1px solid ${C.border}`, padding: "14px 0",
+      {/* Horizontal nav, centered */}
+      <div style={{ position: "sticky", top: 80, zIndex: 5, display: "flex", justifyContent: "center",
+        flexWrap: "wrap", gap: 6, background: C.white, borderRadius: 14,
+        border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 24,
         boxShadow: "0 2px 12px rgba(26,46,82,0.07)" }}>
-        <div style={{ padding: "0 14px 10px", fontSize: 10, fontWeight: 700, color: C.slateL,
-          textTransform: "uppercase", letterSpacing: "0.08em" }}>Navigacija</div>
         {navItems.map(n => (
           <button key={n.id} onClick={() => scrollTo(n.id)} style={{
-            width: "100%", padding: "8px 14px", border: "none", background: "none",
-            textAlign: "left", fontSize: 12, fontWeight: section === n.id ? 700 : 400,
+            padding: "8px 14px", border: "none", borderRadius: 8,
+            background: section === n.id ? C.goldL : "none",
+            textAlign: "center", fontSize: 12, fontWeight: section === n.id ? 700 : 400,
             color: section === n.id ? C.navy : C.slate,
-            borderLeft: `3px solid ${section === n.id ? C.gold : "transparent"}`,
             cursor: "pointer", transition: "all 0.15s",
           }}>{n.label}</button>
         ))}
@@ -2941,7 +2940,7 @@ function EduView() {
                 { sym: "×", desc: "", color: "#fff" },
                 { sym: "PF", desc: "Polazni faktor (±odlazak)", color: "#c4a8ff" },
                 { sym: "×", desc: "", color: "#fff" },
-                { sym: "MF", desc: "Mirovinski faktor (vrsta)", color: "#ff9090" },
+                { sym: "MF*", desc: "Mirovinski faktor (vrsta)", color: "#ff9090" },
                 { sym: "×", desc: "", color: "#fff" },
                 { sym: "AVM", desc: "Aktualna vrijednost = 14,45 EUR", color: C.goldL },
               ].map((t, i) => t.sym === "=" || t.sym === "×"
@@ -2959,6 +2958,12 @@ function EduView() {
               <span className="mono" style={{ fontSize: 12, color: "#7bffb0" }}>
                 M = {pvb.toFixed(2)} × {staz} × {pf_std.toFixed(3)} × 1.00 × {AVM} = <strong>{fmt(mirovina_std)} EUR</strong>
               </span>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+              * MF (mirovinski faktor) ovisi o vrsti mirovine: <strong style={{ color: "#fff" }}>1,00</strong> za
+              starosnu i prijevremenu mirovinu, <strong style={{ color: "#fff" }}>1,10</strong> za potpunu
+              invalidsku i <strong style={{ color: "#fff" }}>0,90</strong> za djelomičnu invalidsku mirovinu
+              (od 1.1.2026., ZOMO čl. 48.).
             </div>
           </Card>
         </EduSection>
