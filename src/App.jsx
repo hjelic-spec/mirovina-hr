@@ -1607,14 +1607,28 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
   const ukupno_investicijska = renta_investicijska * 12 * params.e65;
   const nasljedstvo_investicijska = preostali; // kapital ostaje uložen, glavnica se ne troši
 
-  const varijante_full = [
-    { key: "standard", l: "Standardna doživotna renta", renta: renta_standard, ukupno_zivot: ukupno_standard, nasljedstvo: nasljedstvo_standard, postoji: true },
+  // Stvarne opcije isplate prema ZOMF (osim standardne doživotne)
+  const renta_garancija10 = renta_standard * 0.95; // procjena: garancija isplate min. 10 god. (nasljednicima ako korisnik umre prije)
+  const ukupno_garancija10 = renta_garancija10 * 12 * params.e65;
+  const nasljedstvo_garancija10 = renta_garancija10 * 12 * Math.max(0, 10 - params.e65);
+
+  const renta_obiteljska50 = renta_standard * 0.88; // procjena: 50% rente nastavlja se bračnom drugu nakon smrti korisnika
+  const ukupno_obiteljska50 = renta_obiteljska50 * 12 * params.e65;
+
+  const varijante_stvarne = [
+    { key: "standard", l: "Standardna doživotna renta", renta: renta_standard, ukupno_zivot: ukupno_standard, nasljedstvo: nasljedstvo_standard, nasljedstvo_label: null, postoji: true },
+    { key: "garancija10", l: "Doživotna renta s garancijom isplate 10 god.", renta: renta_garancija10, ukupno_zivot: ukupno_garancija10, nasljedstvo: nasljedstvo_garancija10, nasljedstvo_label: null, postoji: true },
+    { key: "obiteljska50", l: "Obiteljska doživotna mirovina (50% bračnom drugu)", renta: renta_obiteljska50, ukupno_zivot: ukupno_obiteljska50, nasljedstvo: 0, nasljedstvo_label: "ovisi o dobi supružnika", postoji: true },
+  ].map(v => ({ ...v, ukupna_vrijednost: v.ukupno_zivot + v.nasljedstvo + jednokratni_iznos }));
+
+  const varijante_inovativne = [
     { key: "s_povratom", l: "Renta s povratom ostatka", renta: renta_s_povratom, ukupno_zivot: ukupno_s_povratom, nasljedstvo: nasljedstvo_s_povratom, postoji: false },
     { key: "fiksno_n", l: "Fiksna renta 20 god.", renta: renta_fiksno_n, ukupno_zivot: ukupno_fiksno, nasljedstvo: nasljedstvo_fiksno, postoji: false },
     { key: "investicijska", l: "Investicijska mirovina (4%)", renta: renta_investicijska, ukupno_zivot: ukupno_investicijska, nasljedstvo: nasljedstvo_investicijska, postoji: false },
   ].map(v => ({ ...v, ukupna_vrijednost: v.ukupno_zivot + v.nasljedstvo + jednokratni_iznos }));
 
-  const najbolja = varijante_full.reduce((a, b) => b.ukupna_vrijednost > a.ukupna_vrijednost ? b : a);
+  const varijante_sve = [...varijante_stvarne, ...varijante_inovativne];
+  const najbolja = varijante_sve.reduce((a, b) => b.ukupna_vrijednost > a.ukupna_vrijednost ? b : a);
 
   async function handleSave() {
     if (!user) { onAuthRequired("Za spremanje scenarija potrebna je prijava ili registracija. Besplatno je i traje 30 sekundi."); return; }
@@ -1945,13 +1959,82 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
         </ResponsiveContainer>
       </Card>
 
-      {/* Usporedba svih opcija isplate + financijska analiza */}
+      {/* Stvarne opcije isplate (ZOMF) */}
       <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Usporedba svih opcija isplate II. stupa</h3>
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Stvarne opcije isplate II. stupa (ZOMF)</h3>
         <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Pri umirovljenju, preostali kapital ({fmt(preostali)} EUR) MOD pretvara u jedan od ovih oblika isplate.
-          U HR danas zakonski postoji samo standardna doživotna renta (ZOMF) — ostale su simulacije
-          mogućih budućih opcija, prikazane radi usporedbe.
+          Pri umirovljenju, preostali kapital ({fmt(preostali)} EUR) MOD pretvara u jedan od ovih oblika doživotne
+          rente. Sve tri varijante u nastavku stvarno postoje u hrvatskom zakonodavnom okviru — razlikuju se po
+          tome kome i koliko dugo se renta isplaćuje.
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                <th style={{ textAlign: "left", padding: "8px 10px" }}>Varijanta</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Renta / mj.</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Razlika vs. standard</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Primljeno do {65 + params.e65}. god.*</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Nakon smrti korisnika</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Ukupna vrijednost*</th>
+              </tr>
+            </thead>
+            <tbody>
+              {varijante_stvarne.map(v => (
+                <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}`,
+                  background: v.key === najbolja.key ? C.greenL : "transparent" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>
+                    {v.key === najbolja.key ? "🏆 " : ""}{v.l}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.renta)} EUR</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right",
+                    color: v.renta === renta_standard ? C.slateL : (v.renta > renta_standard ? C.green : C.red) }}>
+                    {v.renta === renta_standard ? "—" : `${v.renta > renta_standard ? "+" : ""}${fmt(v.renta - renta_standard)} EUR`}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(v.ukupno_zivot)} EUR</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", color: v.nasljedstvo_label ? C.slateL : "inherit" }}>
+                    {v.nasljedstvo_label || `${fmt(v.nasljedstvo)} EUR`}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.ukupna_vrijednost)} EUR</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
+          * Procjena uz pretpostavku da primatelj živi {params.e65} god. nakon 65. (do {65 + params.e65}. god. života)
+          — vaša postavka "Preostali životni vijek". "Ukupna vrijednost" = jednokratna isplata ({fmt(jednokratni_iznos)} EUR)
+          + primljeno tijekom života + ono što nakon smrti korisnika ostaje nasljednicima/supružniku. Renta s garancijom
+          i obiteljska renta su procjene — MOD utvrđuje stvarni iznos prema aktuarskim tablicama, dobi i odabranom bračnom drugu.
+        </div>
+
+        <div style={{ marginTop: 14, padding: "12px 16px", background: C.blueL, borderRadius: 10, border: `1.5px solid ${C.blue}33` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>
+            Druge stvarne opcije (ne ovise o tipu rente)
+          </div>
+          <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+            <li><strong>Jednokratna isplata dijela kapitala</strong> (do 20%) — već uključena gore kroz postavku
+              "Jednokratna isplata" ({fmt(jednokratni_iznos)} EUR), dostupna samo ako je vaša I. stup mirovina iznad
+              115% najniže mirovine.</li>
+            <li><strong>Privremena starosna mirovina</strong> — ako u trenutku umirovljenja ne ispunjavate uvjete
+              za doživotnu rentu kod MOD-a (npr. prijevremeno umirovljenje), REGOS isplaćuje privremenu mirovinu iz
+              vašeg kapitala dok ne ispunite uvjete, nakon čega prelazite na jednu od rentnih opcija iz tablice.</li>
+            <li><strong>Isplata cijelog kapitala</strong> — ako je akumulirani kapital ispod zakonskog minimuma za
+              rentu, cijeli iznos isplaćuje se jednokratno ili se pripaja I. stupu (uvećava osnovicu).</li>
+          </ul>
+        </div>
+      </Card>
+
+      {/* Inovativne varijante isplate (simulacije) */}
+      <Card style={{ marginTop: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <h3 style={{ fontSize: 15 }}>Inovativne varijante isplate (simulacije)</h3>
+          <Badge label="Ne postoje u ZOMF" color={C.purple} />
+        </div>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
+          Ove varijante <strong>danas ne postoje</strong> u hrvatskom zakonodavnom okviru. Prikazane su kao
+          simulacija mogućih budućih opcija (po uzoru na sustave poput nizozemskog ili australskog), radi
+          usporedbe s onim što je stvarno dostupno.
         </p>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
@@ -1962,20 +2045,20 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
                 <th style={{ textAlign: "right", padding: "8px 10px" }}>Razlika vs. standard</th>
                 <th style={{ textAlign: "right", padding: "8px 10px" }}>Primljeno do {65 + params.e65}. god.*</th>
                 <th style={{ textAlign: "right", padding: "8px 10px" }}>Ostaje nasljednicima*</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Ukupna vrijednost</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Ukupna vrijednost*</th>
               </tr>
             </thead>
             <tbody>
-              {varijante_full.map(v => (
+              {varijante_inovativne.map(v => (
                 <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}`,
                   background: v.key === najbolja.key ? C.greenL : "transparent" }}>
                   <td style={{ padding: "8px 10px", fontWeight: 600 }}>
-                    {v.key === najbolja.key ? "🏆 " : ""}{v.l}{!v.postoji ? " *" : ""}
+                    {v.key === najbolja.key ? "🏆 " : ""}{v.l} *
                   </td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.renta)} EUR</td>
                   <td style={{ padding: "8px 10px", textAlign: "right",
-                    color: v.renta === renta_standard ? C.slateL : (v.renta > renta_standard ? C.green : C.red) }}>
-                    {v.renta === renta_standard ? "—" : `${v.renta > renta_standard ? "+" : ""}${fmt(v.renta - renta_standard)} EUR`}
+                    color: v.renta > renta_standard ? C.green : C.red }}>
+                    {`${v.renta > renta_standard ? "+" : ""}${fmt(v.renta - renta_standard)} EUR`}
                   </td>
                   <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(v.ukupno_zivot)} EUR</td>
                   <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(v.nasljedstvo)} EUR</td>
@@ -1985,27 +2068,30 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
-          * Procjena uz pretpostavku da primatelj živi {params.e65} god. nakon 65. (do {65 + params.e65}. god. života) — vaša postavka "Preostali životni vijek". "Ukupna vrijednost" = jednokratna isplata ({fmt(jednokratni_iznos)} EUR) + primljeno tijekom života + procijenjeni ostatak nasljednicima.
+        <div style={{ fontSize: 10, color: C.purple, marginTop: 8, lineHeight: 1.5 }}>
+          * Sve varijante označene zvjezdicom su simulacije — usporedba je informativna, ne predstavlja stvarnu
+          zakonsku opciju.
         </div>
+      </Card>
 
-        <div style={{ marginTop: 14, padding: "12px 16px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>
-            💡 Koja varijanta donosi najviše pri sadašnjim uvjetima?
-          </div>
-          <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
-            Uz vaš preostali kapital od <strong>{fmt(preostali)} EUR</strong> i pretpostavljeni životni vijek od
-            {" "}{params.e65} god. nakon 65., najveću ukupnu financijsku vrijednost donosi opcija{" "}
-            <strong>"{najbolja.l}"</strong> — ukupno <strong>{fmt(najbolja.ukupna_vrijednost)} EUR</strong>
-            {najbolja.key !== "standard"
-              ? ` (${fmt(najbolja.ukupna_vrijednost - varijante_full[0].ukupna_vrijednost)} EUR više nego standardna renta).`
-              : "."}
-            {najbolja.key !== "standard" &&
-              " Napomena: ova opcija danas ne postoji u HR zakonodavnom okviru (ZOMF) — standardna doživotna renta jedina je stvarna opcija pri umirovljenju."}
-            {" "}Ako živite dulje od pretpostavke, doživotne varijante (standard, investicijska) postaju relativno isplativije;
-            ako kraće, varijante s nasljeđivanjem (s povratom, fiksno, investicijska) donose više vašoj obitelji.
-          </p>
+      {/* Preporuka */}
+      <Card style={{ marginTop: 20, background: C.greenL, border: `1.5px solid ${C.green}33` }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>
+          💡 Koja varijanta donosi najviše pri sadašnjim uvjetima?
         </div>
+        <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
+          Uz vaš preostali kapital od <strong>{fmt(preostali)} EUR</strong> i pretpostavljeni životni vijek od
+          {" "}{params.e65} god. nakon 65., najveću ukupnu financijsku vrijednost donosi opcija{" "}
+          <strong>"{najbolja.l}"</strong> — ukupno <strong>{fmt(najbolja.ukupna_vrijednost)} EUR</strong>
+          {najbolja.key !== "standard"
+            ? ` (${fmt(najbolja.ukupna_vrijednost - varijante_stvarne[0].ukupna_vrijednost)} EUR više nego standardna renta).`
+            : "."}
+          {!najbolja.postoji &&
+            ` Napomena: ova opcija danas ne postoji u HR zakonodavnom okviru (ZOMF) — od stvarnih opcija, najpovoljnija je "${varijante_stvarne.reduce((a, b) => b.ukupna_vrijednost > a.ukupna_vrijednost ? b : a).l}".`}
+          {" "}Ako živite dulje od pretpostavke, doživotne varijante (standard, garancija, obiteljska, investicijska)
+          postaju relativno isplativije; ako kraće, varijante s nasljeđivanjem (garancija, s povratom, fiksno,
+          investicijska) donose više vašoj obitelji.
+        </p>
       </Card>
     </div>
   );
