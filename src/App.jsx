@@ -395,8 +395,35 @@ const PDF_DISCLAIMER =
   "HZMO-u (mirovinsko.hr) odnosno za II./III. stup HANFA-i (hanfa.hr) ili na mojamirovina.hr. " +
   "Korišteni podaci i formule temelje se na ZOMO/ZOMF/ZDOBF te AVM = 14,45 EUR (od 1.7.2025.) i podložni su promjenama.";
 
-function exportSummaryToPDF({ title, subtitle, rows, formule }) {
+// Roboto (latin + latin-ext) — uključuje sva hrvatska slova (č, ć, š, ž, đ)
+let _pdfFontsPromise = null;
+async function loadPdfFonts(doc) {
+  if (!_pdfFontsPromise) {
+    _pdfFontsPromise = (async () => {
+      const toBase64 = buf => {
+        let binary = "";
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      };
+      const [regular, bold] = await Promise.all([
+        fetch("/fonts/Roboto-Regular.ttf").then(r => r.arrayBuffer()),
+        fetch("/fonts/Roboto-Bold.ttf").then(r => r.arrayBuffer()),
+      ]);
+      return { regular: toBase64(regular), bold: toBase64(bold) };
+    })();
+  }
+  const fonts = await _pdfFontsPromise;
+  doc.addFileToVFS("Roboto-Regular.ttf", fonts.regular);
+  doc.addFileToVFS("Roboto-Bold.ttf", fonts.bold);
+  doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+  doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
+}
+
+async function exportSummaryToPDF({ title, subtitle, rows, formule }) {
   const doc = new jsPDF();
+  await loadPdfFonts(doc);
+  doc.setFont("Roboto", "normal");
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = 18;
@@ -405,10 +432,10 @@ function exportSummaryToPDF({ title, subtitle, rows, formule }) {
   doc.setFillColor(26, 46, 82); // C.navy
   doc.rect(0, 0, pageW, 30, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Roboto", "bold");
   doc.setFontSize(15);
   doc.text("Mirovinski Sustav HR", 14, 13);
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Roboto", "normal");
   doc.setFontSize(11);
   doc.text(title, 14, 22);
   if (subtitle) {
@@ -426,10 +453,10 @@ function exportSummaryToPDF({ title, subtitle, rows, formule }) {
   // Rows table
   doc.setFontSize(11);
   rows.forEach(([label, value]) => {
-    doc.setFont("helvetica", "normal");
+    doc.setFont("Roboto", "normal");
     doc.setTextColor(80, 80, 80);
     doc.text(String(label), 14, y);
-    doc.setFont("helvetica", "bold");
+    doc.setFont("Roboto", "bold");
     doc.setTextColor(20, 20, 20);
     doc.text(String(value), pageW - 14, y, { align: "right" });
     doc.setDrawColor(230, 230, 230);
@@ -440,12 +467,12 @@ function exportSummaryToPDF({ title, subtitle, rows, formule }) {
   // Formule i parametri
   if (formule && formule.length) {
     y += 6;
-    doc.setFont("helvetica", "bold");
+    doc.setFont("Roboto", "bold");
     doc.setFontSize(11);
     doc.setTextColor(26, 46, 82);
     doc.text("Formule i parametri", 14, y);
     y += 7;
-    doc.setFont("courier", "normal");
+    doc.setFont("Roboto", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(70, 70, 70);
     formule.forEach(line => {
@@ -462,7 +489,7 @@ function exportSummaryToPDF({ title, subtitle, rows, formule }) {
     doc.setPage(i);
     doc.setFillColor(245, 246, 250);
     doc.rect(0, pageH - 24, pageW, 24, "F");
-    doc.setFont("helvetica", "normal");
+    doc.setFont("Roboto", "normal");
     doc.setFontSize(7);
     doc.setTextColor(110, 110, 110);
     doc.text(doc.splitTextToSize(PDF_DISCLAIMER, pageW - 28), 14, pageH - 18);
@@ -1185,8 +1212,8 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
     if (onSave) onSave();
   }
 
-  function handleExportPDF() {
-    exportSummaryToPDF({
+  async function handleExportPDF() {
+    await exportSummaryToPDF({
       title: "I. mirovinski stup — izračun mirovine",
       subtitle: naziv,
       rows: [
@@ -1579,12 +1606,12 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
     if (onSave) onSave();
   }
 
-  function handleExportPDF() {
+  async function handleExportPDF() {
     const rentaLabel = params.inovativna_varijanta === "standard" ? "Okvirna doživotna renta / mj."
       : params.inovativna_varijanta === "s_povratom" ? "* Renta s povratom ostatka / mj."
       : params.inovativna_varijanta === "fiksno_n" ? "* Fiksna renta 20 god. / mj."
       : "* Investicijska mirovina / mj. (4% pravilo)";
-    exportSummaryToPDF({
+    await exportSummaryToPDF({
       title: "II. mirovinski stup — izračun kapitala i rente",
       subtitle: naziv,
       rows: [
@@ -1915,8 +1942,8 @@ function UkupnoView() {
     { name: "II. stup renta", value: Math.round(renta), fill: C.purple },
   ];
 
-  function handleExportPDF() {
-    exportSummaryToPDF({
+  async function handleExportPDF() {
+    await exportSummaryToPDF({
       title: "Ukupna kombinirana mirovina — izračun",
       subtitle: "I. stup + Dodatak 27% + II. stup renta",
       rows: [
