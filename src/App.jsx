@@ -201,7 +201,7 @@ function exportToExcel(scenariji, username) {
   });
 
   xlAppendSheet(wb, [
-    [`Mirovina HR — Izvoz scenarija | ${username} | ${datum}`],
+    [`Mirovinski Sustav HR — Izvoz scenarija | ${username} | ${datum}`],
     [],
     ["⚠ Svi iznosi su informativni izračuni. Za točne podatke koristite mojamirovina.hr (e-Građani)."],
     [],
@@ -4683,7 +4683,7 @@ export default function App() {
         height: 58,
       }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#fff", marginRight: 32, whiteSpace: "nowrap" }}>
-          🏛 Mirovina HR
+          🏛 Mirovinski Sustav HR
         </div>
         <div style={{ display: "flex", gap: 2, flex: 1 }}>
           {tabs.map(t => (
@@ -4765,7 +4765,7 @@ export default function App() {
 
       {/* Footer */}
       <footer style={{ background: C.navy, color: "rgba(255,255,255,0.5)", padding: "18px 24px", textAlign: "center", fontSize: 11, lineHeight: 1.8 }}>
-        <strong style={{ color: "rgba(255,255,255,0.8)" }}>Mirovina HR</strong> — isključivo informativna platforma<br />
+        <strong style={{ color: "rgba(255,255,255,0.8)" }}>Mirovinski Sustav HR</strong> — isključivo informativna platforma<br />
         Izvor: HZMO (mirovinsko.hr) · HANFA · mss.gov.hr · ZOMO · ZOMF · AVM 14,45 EUR od 1.7.2025.<br />
         ⚠ Kalkulatori su aproksimativni. Za točan izračun koristite mojamirovina.hr ili se obratite HZMO-u.
       </footer>
