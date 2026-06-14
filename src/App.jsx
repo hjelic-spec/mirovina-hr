@@ -4482,7 +4482,7 @@ function VodicView() {
         {[
           ["Provjeri stanje II. stupa na REGOS portalu (e-Građani)", "Jednom godišnje"],
           ["Ažuriraj podatke u HZMO o eventualnom neevidentiranom stažu", "Jednom u životu"],
-          ["Otvori ili aktiviraj III. stup (DPS = besplatni novac od države)", "Odmah ako nijesi"],
+          ["Otvori ili aktiviraj III. stup (DPS = besplatni novac od države)", "Odmah ako nisi"],
           ["Provjeri kategoriju OMF — A, B ili C je li primjerena tvojoj dobi", "Jednom godišnje"],
           ["Koristiti 'Moja mirovina' (mojamirovina.hr) za informativni izračun", "Jednom godišnje"],
           ["Planiraj mirovinu kao projekt — ne čekaj zadnji tren", "Sada"],
@@ -4508,7 +4508,7 @@ function VodicView() {
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);         // null = guest
-  const [tab, setTab] = useState("stup1");
+  const [tab, setTab] = useState("edu");
   const [authModal, setAuthModal] = useState(null); // null | reason string
   const [scenariiRefresh, setScenariiRefresh] = useState(0);
   const [appReady, setAppReady] = useState(false);
@@ -4541,6 +4541,7 @@ export default function App() {
   }
 
   const tabs = [
+    { id: "edu",      icon: <BookOpen size={15} />,   label: "Edukacija" },
     { id: "stup1",    icon: <Calculator size={15} />, label: "I. stup" },
     { id: "stup2",    icon: <PiggyBank size={15} />,  label: "II. stup" },
     { id: "stup3",    icon: <TrendingUp size={15} />, label: "III. stup" },
@@ -4549,7 +4550,6 @@ export default function App() {
     { id: "planer",   icon: <DollarSign size={15} />, label: "Planer" },
     { id: "svijet",   icon: <Users size={15} />,      label: "Svijet" },
     { id: "vodic",    icon: <Clock size={15} />,      label: "Vodič" },
-    { id: "edu",      icon: <BookOpen size={15} />,   label: "Edukacija" },
     { id: "blog",     icon: <Star size={15} />,       label: "Blog i AI" },
     { id: "scenariji",icon: <FileText size={15} />,   label: "Scenariji" },
   ];
