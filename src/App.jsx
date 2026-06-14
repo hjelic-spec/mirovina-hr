@@ -2055,7 +2055,7 @@ function SP500MirovinaBlog() {
   const prinos_map = {
     "40y_nominal": SP500_40Y_NOMINAL,
     "40y_realni":  SP500_40Y_REALNI,
-    "long_nominal":SP500_40Y_LONG_NOMINAL || SP500_LONG_NOMINAL,
+    "long_nominal":SP500_LONG_NOMINAL,
     "custom":      custom_prinos,
   };
   const prinos = prinos_map[prinos_mode];
