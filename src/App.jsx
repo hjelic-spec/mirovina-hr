@@ -7,6 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell
 } from "recharts";
 import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
 import {
   User, LogOut, Calculator, BookOpen, Download, Save, ChevronRight,
   Info, AlertTriangle, CheckCircle, TrendingUp, Shield, Clock,
@@ -385,6 +386,91 @@ function exportToExcel(scenariji, username) {
   });
 
   XLSX.writeFile(wb, `mirovina_${(username || "korisnik").replace(/\s+/g, "_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ─── PDF EXPORT (bez registracije) ──────────────────────────────────────────
+const PDF_DISCLAIMER =
+  "Ovo je informativni izračun generiran neovisnim alatom Mirovinski Sustav HR i ne predstavlja " +
+  "službeni izračun mirovine niti obvezujući dokument. Za točan i pravno valjan izračun obratite se " +
+  "HZMO-u (mirovinsko.hr) odnosno za II./III. stup HANFA-i (hanfa.hr) ili na mojamirovina.hr. " +
+  "Korišteni podaci i formule temelje se na ZOMO/ZOMF/ZDOBF te AVM = 14,45 EUR (od 1.7.2025.) i podložni su promjenama.";
+
+function exportSummaryToPDF({ title, subtitle, rows, formule }) {
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = 18;
+
+  // Header
+  doc.setFillColor(26, 46, 82); // C.navy
+  doc.rect(0, 0, pageW, 30, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("Mirovinski Sustav HR", 14, 13);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(title, 14, 22);
+  if (subtitle) {
+    doc.setFontSize(9);
+    doc.setTextColor(220, 226, 240);
+    doc.text(subtitle, 14, 28);
+  }
+
+  y = 40;
+  doc.setTextColor(120, 120, 120);
+  doc.setFontSize(9);
+  doc.text(`Izračun generiran: ${new Date().toLocaleString("hr-HR")}`, 14, y);
+  y += 9;
+
+  // Rows table
+  doc.setFontSize(11);
+  rows.forEach(([label, value]) => {
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text(String(label), 14, y);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text(String(value), pageW - 14, y, { align: "right" });
+    doc.setDrawColor(230, 230, 230);
+    doc.line(14, y + 2.5, pageW - 14, y + 2.5);
+    y += 9;
+  });
+
+  // Formule i parametri
+  if (formule && formule.length) {
+    y += 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(26, 46, 82);
+    doc.text("Formule i parametri", 14, y);
+    y += 7;
+    doc.setFont("courier", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(70, 70, 70);
+    formule.forEach(line => {
+      const split = doc.splitTextToSize(line, pageW - 28);
+      if (y + split.length * 4.5 > pageH - 30) { doc.addPage(); y = 18; }
+      doc.text(split, 14, y);
+      y += split.length * 4.5 + 3;
+    });
+  }
+
+  // Disclaimer footer na svakoj stranici
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFillColor(245, 246, 250);
+    doc.rect(0, pageH - 24, pageW, 24, "F");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(110, 110, 110);
+    doc.text(doc.splitTextToSize(PDF_DISCLAIMER, pageW - 28), 14, pageH - 18);
+    doc.setFontSize(7);
+    doc.text(`Stranica ${i} / ${pageCount}`, pageW - 14, pageH - 4, { align: "right" });
+  }
+
+  doc.save(`${title.replace(/[^a-zA-Z0-9čćžšđČĆŽŠĐ]+/g, "_")}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 // ─── BLOG DATA (static + AI-enriched) ───────────────────────────────────────
@@ -1099,6 +1185,34 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
     if (onSave) onSave();
   }
 
+  function handleExportPDF() {
+    exportSummaryToPDF({
+      title: "I. mirovinski stup — izračun mirovine",
+      subtitle: naziv,
+      rows: [
+        ["Vrsta mirovine", vrsteOptions.find(o => o.v === params.vrsta)?.l || params.vrsta],
+        ["Mirovinski staž", `${params.staz} god.`],
+        ["Prosječni vrijednosni bodovi (PVB)", params.pvb.toFixed(2)],
+        ["Polazni faktor (PF)", pf.toFixed(3)],
+        ["Mirovinski faktor (MF)", mf.toFixed(2)],
+        ["AVM", `${params.avm.toFixed(2)} EUR`],
+        ["Osobni bodovi (OB)", res.ob.toFixed(3)],
+        ["Bruto mirovina", `${fmt(res.bruto)} EUR`],
+        ["Najniža mirovina", `${fmt(res.najniza)} EUR`],
+        ["Najviša mirovina", `${fmt(res.najvisa)} EUR`],
+        ["Efektivna mirovina / mj.", `${fmt(res.efektivna)} EUR`],
+        ["Efektivna mirovina / god.", fmtEur(res.efektivna * 12)],
+      ],
+      formule: [
+        `OB = PVB × Staž × PF = ${params.pvb.toFixed(2)} × ${params.staz} × ${pf.toFixed(3)} = ${res.ob.toFixed(3)}`,
+        `Bruto = OB × MF × AVM = ${res.ob.toFixed(3)} × ${mf} × ${params.avm.toFixed(2)} = ${fmt(res.bruto)} EUR`,
+        `Najniža = ${MIN_MIROVINA_FAKTOR} × AVM × Staž × PF = ${fmt(res.najniza)} EUR`,
+        `Najviša = Staž × ${MAX_VB} × PF × MF × AVM = ${fmt(res.najvisa)} EUR`,
+        `Efektivna = MAX(Najniža, MIN(Najviša, Bruto)) = ${fmt(res.efektivna)} EUR`,
+      ],
+    });
+  }
+
   const vrsteOptions = [
     { v: "starosna", l: "Starosna mirovina" },
     { v: "prijevremena", l: "Prijevremena starosna" },
@@ -1374,6 +1488,14 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
                 {saved ? <CheckCircle size={15} /> : <Save size={15} />}
                 {saved ? "Spremljeno!" : "Spremi"}
               </button>
+              <button onClick={handleExportPDF} title="Izvezi izračun kao PDF" style={{
+                padding: "8px 14px", background: C.white, color: C.navy,
+                border: `1.5px solid ${C.border}`, borderRadius: 8, fontWeight: 600, fontSize: 13,
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <FileText size={15} />
+                PDF
+              </button>
             </div>
           </Card>
         </div>
@@ -1455,6 +1577,34 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
     await stSet(`scenarios:${user.email}`, [...existing, scenario]);
     setSaved(true); setTimeout(() => setSaved(false), 2500);
     if (onSave) onSave();
+  }
+
+  function handleExportPDF() {
+    const rentaLabel = params.inovativna_varijanta === "standard" ? "Okvirna doživotna renta / mj."
+      : params.inovativna_varijanta === "s_povratom" ? "* Renta s povratom ostatka / mj."
+      : params.inovativna_varijanta === "fiksno_n" ? "* Fiksna renta 20 god. / mj."
+      : "* Investicijska mirovina / mj. (4% pravilo)";
+    exportSummaryToPDF({
+      title: "II. mirovinski stup — izračun kapitala i rente",
+      subtitle: naziv,
+      rows: [
+        ["Prosječna bruto plaća", `${params.bruto_placa.toLocaleString("hr-HR")} EUR/mj.`],
+        ["Godine štednje", `${params.god_stednje} god.`],
+        ["Pretpostavljeni neto prinos", `${(params.neto_prinos*100).toFixed(1)}% god.`],
+        ["Akumulirani kapital", `${fmt(kapital)} EUR`],
+        [`Jednokratna isplata (${Math.round(params.jednokratni_pct*100)}%)`, `${fmt(jednokratni_iznos)} EUR`],
+        ["Preostali kapital za rentu", `${fmt(preostali)} EUR`],
+        [rentaLabel, `${fmt(renta_prikaz)} EUR`],
+      ],
+      formule: [
+        `Kapital (FV) = PMT × [((1+r)^n − 1) / r], PMT = bruto × 5% / 12, r = ${(params.neto_prinos*100).toFixed(1)}%/12, n = ${params.god_stednje}×12 = ${fmt(kapital)} EUR`,
+        `Jednokratna isplata = Kapital × ${Math.round(params.jednokratni_pct*100)}% = ${fmt(jednokratni_iznos)} EUR`,
+        `Doživotna renta ≈ Preostali kapital / (e₆₅ × 12) = ${fmt(preostali)} / (${params.e65} × 12) = ${fmt(renta_standard)} EUR/mj.`,
+        params.inovativna_varijanta !== "standard"
+          ? `* ${rentaLabel.replace("* ", "")} = ${fmt(renta_prikaz)} EUR/mj. — simulacija, ne postoji u ZOMF okviru.`
+          : "MOD koristi vlastite aktuarske tablice — ovo je aproksimacija.",
+      ],
+    });
   }
 
   return (
@@ -1716,6 +1866,14 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
                 {saved ? <CheckCircle size={15} /> : <Save size={15} />}
                 {saved ? "Spremljeno!" : "Spremi"}
               </button>
+              <button onClick={handleExportPDF} title="Izvezi izračun kao PDF" style={{
+                padding: "8px 14px", background: C.white, color: C.navy,
+                border: `1.5px solid ${C.border}`, borderRadius: 8, fontWeight: 600, fontSize: 13,
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <FileText size={15} />
+                PDF
+              </button>
             </div>
           </Card>
         </div>
@@ -1757,9 +1915,42 @@ function UkupnoView() {
     { name: "II. stup renta", value: Math.round(renta), fill: C.purple },
   ];
 
+  function handleExportPDF() {
+    exportSummaryToPDF({
+      title: "Ukupna kombinirana mirovina — izračun",
+      subtitle: "I. stup + Dodatak 27% + II. stup renta",
+      rows: [
+        ["I. stup (efektivna)", `${fmt(r1.efektivna)} EUR`],
+        ["Dodatak 27%", `${fmt(dodatak)} EUR`],
+        ["II. stup renta / mj.", `${fmt(renta)} EUR`],
+        ["UKUPNO / mj.", `${fmt(ukupno)} EUR`],
+        ["UKUPNO / god.", fmtEur(ukupno * 12)],
+        ["Akumulirani kapital II. stupa", `${fmt(k2)} EUR`],
+        [`Jednokratna isplata (${Math.round(p2.jednokratni_pct*100)}%)`, fmtEur(k2 * p2.jednokratni_pct)],
+        ["Stopa zamjene (vs. bruto plaća)", pct(ukupno / p2.bruto_placa)],
+      ],
+      formule: [
+        `I. stup = PVB ${p1.pvb.toFixed(2)} × Staž ${p1.staz} × AVM ${p1.avm.toFixed(2)} → ${fmt(r1.efektivna)} EUR`,
+        `Dodatak 27% = I. stup × 0,27 = ${fmt(dodatak)} EUR (NN 156/2023)`,
+        `II. stup renta ≈ Kapital × (1 − ${Math.round(p2.jednokratni_pct*100)}%) / (e₆₅ × 12) = ${fmt(renta)} EUR`,
+        `Ukupno = I. stup + Dodatak 27% + II. stup renta = ${fmt(ukupno)} EUR`,
+      ],
+    });
+  }
+
   return (
     <div className="fadeIn">
-      <h2 style={{ fontSize: 22, marginBottom: 4 }}>Ukupna kombinirana mirovina</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 12 }}>
+        <h2 style={{ fontSize: 22 }}>Ukupna kombinirana mirovina</h2>
+        <button onClick={handleExportPDF} title="Izvezi izračun kao PDF" style={{
+          padding: "8px 14px", background: C.white, color: C.navy,
+          border: `1.5px solid ${C.border}`, borderRadius: 8, fontWeight: 600, fontSize: 13,
+          display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+        }}>
+          <FileText size={15} />
+          PDF
+        </button>
+      </div>
       <p style={{ color: C.slateL, fontSize: 13, marginBottom: 24 }}>I. stup + Dodatak 27% + II. stup renta</p>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
