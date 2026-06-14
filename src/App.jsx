@@ -1630,6 +1630,18 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
   const varijante_sve = [...varijante_stvarne, ...varijante_inovativne];
   const najbolja = varijante_sve.reduce((a, b) => b.ukupna_vrijednost > a.ukupna_vrijednost ? b : a);
 
+  // Život od kamata (5% pravilo) — koliko kapitala treba da se živi samo od prinosa, bez trošenja glavnice
+  const POVRAT_5 = 0.05;
+  const povrat_5_god = kapital * POVRAT_5;
+  const povrat_5_mj = povrat_5_god / 12;
+  const tablica_kamate = [200, 300, 400, 500, 600, 800, 1000, 1250, 1500, 2000, 2500, 3000].map(prihod_mj => ({
+    prihod_mj,
+    prihod_god: prihod_mj * 12,
+    potreban_kapital: (prihod_mj * 12) / POVRAT_5,
+  }));
+  const dostupan_prihod_idx = tablica_kamate.reduce((best, row, i) =>
+    row.potreban_kapital <= kapital ? i : best, -1);
+
   async function handleSave() {
     if (!user) { onAuthRequired("Za spremanje scenarija potrebna je prijava ili registracija. Besplatno je i traje 30 sekundi."); return; }
     const scenario = {
@@ -2092,6 +2104,53 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
           postaju relativno isplativije; ako kraće, varijante s nasljeđivanjem (garancija, s povratom, fiksno,
           investicijska) donose više vašoj obitelji.
         </p>
+      </Card>
+
+      {/* Život od kamata — 5% pravilo */}
+      <Card style={{ marginTop: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Život od prinosa na kapital (5% pravilo)</h3>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
+          Ideja "investicijske mirovine": kapital ostaje uložen, a trošite samo godišnji prinos — glavnica se
+          ne dira. Uz pretpostavljeni prosječni godišnji povrat od <strong>5%</strong>, vaš ukupni kapital iz
+          II. stupa ({fmt(kapital)} EUR) donosi:
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <ResultBox label="5% godišnje (ne dira glavnicu)" value={`${fmt(povrat_5_god)} EUR/god.`} color={C.gold} big />
+          <ResultBox label="= mjesečno" value={`${fmt(povrat_5_mj)} EUR/mj.`} color={C.gold} big />
+        </div>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 10, lineHeight: 1.6 }}>
+          Obrnuto — koliko bi kapitala trebalo da uz 5% godišnji prinos isplata pokrije željeni mjesečni iznos,
+          bez trošenja glavnice:
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                <th style={{ textAlign: "left", padding: "8px 10px" }}>Željeni prihod / mj.</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Željeni prihod / god.</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Potreban kapital (uz 5% god.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tablica_kamate.map((row, i) => (
+                <tr key={row.prihod_mj} style={{ borderBottom: `1px solid ${C.border}`,
+                  background: i === dostupan_prihod_idx ? C.goldL : "transparent" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>
+                    {i === dostupan_prihod_idx ? "🏆 " : ""}{fmt(row.prihod_mj)} EUR
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(row.prihod_god)} EUR</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(row.potreban_kapital)} EUR</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
+          {dostupan_prihod_idx >= 0
+            ? `🏆 = najviši mjesečni iznos koji vaš trenutni kapital (${fmt(kapital)} EUR) već pokriva uz 5% god. prinos, bez trošenja glavnice.`
+            : `Vaš trenutni kapital (${fmt(kapital)} EUR) uz 5% god. prinos ne pokriva ni najniži prag od ${fmt(tablica_kamate[0].prihod_mj)} EUR/mj. iz tablice.`}
+          {" "}Pravilo "5%" je pojednostavljena procjena (ne uzima u obzir inflaciju, poreze ni stvarnu volatilnost prinosa) — služi za ilustraciju, ne kao financijski savjet.
+        </div>
       </Card>
     </div>
   );
