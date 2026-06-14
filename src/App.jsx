@@ -969,6 +969,93 @@ function AuthModal({ onLogin, onClose, reason = "" }) {
   );
 }
 
+// ─── FEEDBACK MODAL ──────────────────────────────────────────────────────────
+function FeedbackModal({ onClose }) {
+  const [tip, setTip] = useState("greska");
+  const [poruka, setPoruka] = useState("");
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const inp = { width: "100%", padding: "11px 14px", border: `1.5px solid ${C.border}`,
+    borderRadius: 9, fontSize: 14, outline: "none", background: "#fafbff", fontFamily: "inherit" };
+
+  function handleSubmit() {
+    if (!poruka.trim()) return;
+    const tipLabel = { greska: "Greška", prijedlog: "Prijedlog", komentar: "Komentar" }[tip];
+    const subject = `[Mirovina HR] ${tipLabel}`;
+    const body = `${poruka}${email ? `\n\nKontakt e-adresa: ${email}` : ""}`;
+    window.location.href = `mailto:hjelic@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    setSent(true);
+  }
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "rgba(15,25,50,0.55)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="fadeIn" style={{ width: "100%", maxWidth: 440, background: C.white, borderRadius: 18, padding: 32, boxShadow: "0 24px 80px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>💬</div>
+            <h2 style={{ fontSize: 20, marginBottom: 4 }}>Prijavi grešku ili komentar</h2>
+            <p style={{ fontSize: 12, color: C.slateL, lineHeight: 1.5 }}>
+              Otvorit će se tvoj e-mail klijent s pripremljenom porukom.
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.slateL, padding: 4, cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {sent ? (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+            <p style={{ fontSize: 14, color: C.slate, lineHeight: 1.6, marginBottom: 18 }}>
+              Hvala! Provjeri da se e-mail otvorio u tvojoj aplikaciji i pošalji ga.
+            </p>
+            <button onClick={onClose} style={{
+              padding: "10px 24px", background: C.navy, border: "none", borderRadius: 9,
+              color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            }}>Zatvori</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", marginBottom: 16, background: C.bg, borderRadius: 9, padding: 3, gap: 0 }}>
+              {[["greska","Greška"],["prijedlog","Prijedlog"],["komentar","Komentar"]].map(([v, l]) => (
+                <button key={v} onClick={() => setTip(v)}
+                  style={{ flex: 1, padding: "8px 0", border: "none", borderRadius: 7,
+                    background: tip === v ? C.navy : "transparent",
+                    color: tip === v ? "#fff" : C.slateL, fontWeight: 600, fontSize: 12,
+                    transition: "all 0.2s", cursor: "pointer" }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+              <textarea style={{ ...inp, minHeight: 110, resize: "vertical" }}
+                placeholder="Opiši grešku, prijedlog ili komentar…"
+                value={poruka} onChange={e => setPoruka(e.target.value)} />
+              <input style={inp} placeholder="Tvoja e-adresa (neobavezno, za odgovor)"
+                type="email" value={email} onChange={e => setEmail(e.target.value)} />
+            </div>
+
+            <button onClick={handleSubmit} disabled={!poruka.trim()} style={{
+              marginTop: 18, width: "100%", padding: "12px 0",
+              background: !poruka.trim() ? C.slateL : `linear-gradient(135deg, ${C.gold}, ${C.goldL})`,
+              border: "none", borderRadius: 10, color: C.navy, fontWeight: 700, fontSize: 14,
+              boxShadow: "0 4px 14px rgba(201,146,43,0.3)", cursor: !poruka.trim() ? "default" : "pointer"
+            }}>
+              Pošalji
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── STUP 1 KALKULATOR ───────────────────────────────────────────────────────
 function Stup1Calculator({ onSave, user, onAuthRequired }) {
   const [params, setParams] = useState({
@@ -4514,6 +4601,7 @@ export default function App() {
   const [user, setUser] = useState(null);         // null = guest
   const [tab, setTab] = useState("edu");
   const [authModal, setAuthModal] = useState(null); // null | reason string
+  const [feedbackModal, setFeedbackModal] = useState(false);
   const [scenariiRefresh, setScenariiRefresh] = useState(0);
   const [appReady, setAppReady] = useState(false);
 
@@ -4572,6 +4660,20 @@ export default function App() {
           reason={authModal}
         />
       )}
+
+      {/* Feedback modal */}
+      {feedbackModal && <FeedbackModal onClose={() => setFeedbackModal(false)} />}
+
+      {/* Floating feedback button */}
+      <button onClick={() => setFeedbackModal(true)} title="Prijavi grešku ili komentar" style={{
+        position: "fixed", bottom: 24, right: 24, zIndex: 100,
+        width: 52, height: 52, borderRadius: "50%", border: "none",
+        background: C.navy, color: "#fff", fontSize: 22, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: "0 6px 20px rgba(26,46,82,0.35)",
+      }}>
+        💬
+      </button>
 
       {/* NAV */}
       <nav style={{
