@@ -1378,7 +1378,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               explain={
                 <div>
                   <p>Za svaki <strong>mjesec ranijeg odlaska</strong> u mirovinu, mirovina se trajno smanjuje za <strong>0,2%</strong>.</p>
-                  <p style={{ marginTop: 6 }}>Ovo smanjenje je <em>permanentno</em> — ne nadoknađuje se nikad. Formula: <em>PF = 1,00 − 0,002 × broj_mj</em>.</p>
+                  <p style={{ marginTop: 6 }}>Ovo smanjenje je <em>trajno</em> — ne nadoknađuje se nikad. Formula: <em>PF = 1,00 − 0,002 × broj_mj</em>.</p>
                   <div style={{ marginTop: 8, padding: "6px 10px", background: C.redL, borderRadius: 6 }}>
                     ⚠ <strong>Pažnja:</strong> 3 godine ranije = −7,2% mirovine zauvijek. Na 20 god. mirovine, to je ekvivalent 1,4 god. bez prihoda.
                   </div>
@@ -1481,6 +1481,18 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
             </div>
             <div style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: C.slateL }}>
               Godišnje: <strong>{fmtEur(res.efektivna * 12)}</strong>
+            </div>
+            <div style={{ marginTop: 12, padding: "10px 12px", background: C.bg, borderRadius: 8, fontSize: 11, color: C.slate, lineHeight: 1.6 }}>
+              <strong>📐 Najviša mirovina (zakonski maksimum):</strong> "Najviša mirovina" = Staž × {MAX_VB} × PF × MF × AVM
+              — to je apsolutni gornji limit za vaš staž, jer prosječni vrijednosni bod (PVB) po zakonu ne može
+              premašiti {MAX_VB}. Vaš PVB je {params.pvb.toFixed(2)}, što znači da je vaša bruto mirovina na{" "}
+              <strong>{pct(params.pvb / MAX_VB)}</strong> ovog maksimuma — bruto mirovina je{" "}
+              {res.bruto >= res.najvisa
+                ? <>jednaka maksimumu, pa je efektivna mirovina <strong>ograničena (capped)</strong> na {fmt(res.najvisa)} EUR.</>
+                : <>ispod maksimuma, pa <strong>nije ograničena</strong> najvišim iznosom — najviša mirovina ovdje služi
+                    samo kao referentna gornja granica.</>}
+              {res.bruto < res.najniza && <> Napomena: bruto mirovina je ispod zakonskog minimuma, pa je efektivna
+                mirovina podignuta na najnižu mirovinu od {fmt(res.najniza)} EUR.</>}
             </div>
           </Card>
 
@@ -2044,7 +2056,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
       <Card style={{ marginTop: 20 }}>
         <h3 style={{ fontSize: 15, marginBottom: 4 }}>Nasljeđivanje sredstava II. stupa — kada i koliko</h3>
         <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Pravo nasljednika na sredstva iz II. stupa ovisi prije svega o tome je li osiguranik umro <strong>prije</strong>
+          Pravo nasljednika na sredstva iz II. stupa ovisi prije svega o tome je li osiguranik umro <strong>prije</strong>{" "}
           ili <strong>nakon</strong> pretvaranja kapitala u rentu kod MOD-a.
         </p>
 
@@ -2310,6 +2322,10 @@ function UkupnoView() {
             </div>
           ))}
         </div>
+        <div style={{ marginTop: 10, fontSize: 10, color: "rgba(255,255,255,0.6)", textAlign: "center" }}>
+          I. stup ({fmt(r1.efektivna)} EUR) je {r1.bruto >= r1.najvisa ? "ograničen na zakonski maksimum" : "ispod zakonskog maksimuma"} za
+          ovaj staž (Najviša mirovina = {fmt(r1.najvisa)} EUR, uz PVB {p1.pvb.toFixed(2)} od max. {MAX_VB}).
+        </div>
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
@@ -2346,6 +2362,50 @@ function UkupnoView() {
           </div>
         </Card>
       </div>
+
+      <Card style={{ marginTop: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Dodatak od 27% na I. stup — tko i kada ima pravo</h3>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
+          Od <strong>1.1.2024.</strong> (Zakon o izmjenama Zakona o mirovinskom osiguranju, NN 156/2023) dio mirovine
+          obračunat prema I. stupu trajno se uvećava za <strong>27%</strong> svim osiguranicima koji ostvaruju
+          <strong> kombiniranu (mješovitu) mirovinu</strong> iz I. i II. stupa. Povećanje se obračunava automatski —
+          ne treba posebni zahtjev.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ padding: "12px 16px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>✅ Ima pravo na dodatak</div>
+            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+              <li>Svi osiguranici koji su (obvezno od 2002. ili dobrovoljno) uplaćivali doprinose u <strong>II. stup</strong>{" "}
+                i čija se mirovina iz I. stupa obračunava po <strong>umanjenoj formuli</strong> za "mješovite" osiguranike.</li>
+              <li>Pravo se odnosi na sve vrste mirovina iz I. stupa (starosna, prijevremena, invalidska, obiteljska) —
+                dok god je osiguranik bio u II. stupu i nije iskoristio istup.</li>
+              <li>Dodatak se računa na <strong>cjelokupni I. stup dio</strong> mirovine, ne samo na razdoblje provedeno u
+                II. stupu.</li>
+            </ul>
+          </div>
+          <div style={{ padding: "12px 16px", background: C.redL, borderRadius: 10, border: `1.5px solid ${C.red}33` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 6 }}>❌ Nema pravo na dodatak</div>
+            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+              <li>Osiguranici rođeni <strong>prije 1.1.1955.</strong> koji su u trenutku uvođenja II. stupa (2002.) ostali
+                isključivo u I. stupu — njihova mirovina obračunava se po "punoj" (neumanjenoj) I. stup formuli, pa
+                korekcija nije potrebna.</li>
+              <li>Osiguranici koji su iskoristili <strong>pravo na istup iz II. stupa</strong> (ZOMF čl. 104) — cijeli
+                njihov staž obračunat je po I. stup formuli kao da nikad nisu bili u II. stupu, pa nemaju ni umanjenje
+                ni dodatak.</li>
+              <li>Korisnici mirovina ostvarenih <strong>prije 1.1.2024.</strong> nisu automatski dobili dodatak retroaktivno
+                za prošla razdoblja, ali im se dodatak primjenjuje na isplate od 1.1.2024. nadalje ako ispunjavaju uvjet
+                kombinirane mirovine.</li>
+            </ul>
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: C.slateL, marginTop: 12, lineHeight: 1.5 }}>
+          Pozadina mjere: osiguranici u II. stupu uplaćuju 5% bruto plaće u privatnu kapitaliziranu štednju umjesto u
+          I. stup, zbog čega se njihov I. stup dio mirovine obračunava po nižoj formuli nego kod osiguranika koji
+          cijeli doprinos uplaćuju u I. stup. Dodatak od 27% djelomično izjednačava tu razliku, uz pretpostavku da
+          II. stup renta nadoknađuje ostatak. Konkretan iznos i primjenu dodatka u svakom pojedinom slučaju utvrđuje
+          HZMO rješenjem o mirovini.
+        </div>
+      </Card>
     </div>
   );
 }
@@ -3410,8 +3470,8 @@ function EduView() {
             <p style={{ fontSize: 13, lineHeight: 1.8, color: C.slate }}>
               <strong>Polazni faktor (PF)</strong> je "nagrada ili kazna" za odluku kada ćete otići u mirovinu.
               Odlazite li <span style={{ color: C.red, fontWeight: 700 }}>ranije</span> od zakonske dobi — PF je manji od 1,0
-              i vaša mirovina je trajno niža. Odlazite li <span style={{ color: C.green, fontWeight: 700 }}>kasnije</span>
-              — PF je veći od 1,0 i mirovina je trajno viša. Ovo povećanje/smanjenje je <strong>permanentno</strong> —
+              i vaša mirovina je trajno niža. Odlazite li <span style={{ color: C.green, fontWeight: 700 }}>kasnije</span>{" "}
+              — PF je veći od 1,0 i mirovina je trajno viša. Ovo povećanje/smanjenje je <strong>trajno</strong> —
               ne mijenja se ni kad napunite "pravu" dob.
             </p>
           </Card>
@@ -3734,7 +3794,7 @@ function EduView() {
                 ⚠ Problemi sadašnjeg sustava
               </div>
               {[
-                { t: "Demografska vremenita bomba", d: "Omjer radnik/umirovljenik pada. 2050. bit će manje od 1 radnika po umirovljeniku. I. stup tada neće biti održiv bez drastičnog smanjenja mirovina ili povećanja poreza." },
+                { t: "Demografska vremenska bomba", d: "Omjer radnik/umirovljenik pada. 2050. bit će manje od 1 radnika po umirovljeniku. I. stup tada neće biti održiv bez drastičnog smanjenja mirovina ili povećanja poreza." },
                 { t: "Niska stopa zamjene", d: "Hrvatska I. stup daje prosječno ~38% bruto plaće. OECD prosjek je 49%, Danska 80%. Dodavanjem II. stupa dolazimo do ~50%, ali to nije dovoljno za dostojanstvenu starost." },
                 { t: "Međugeneracijska nepravda", d: "Mlađe generacije plaćaju visoke doprinose za sadašnje umirovljenike, a same neće imati dovoljno uplatitelja kada dođu u starost. Sustav je asimetričan na njihovu štetu." },
                 { t: "Kapital bez nasljeđivanja", d: "U standardnoj doživotnoj renti iz II. stupa, preostali kapital ostaje MOD-u, ne nasljednicima. Generacijski kapital se 'gubi' u sustavu, ne prenosi na djecu." },
@@ -4025,6 +4085,61 @@ function EduView() {
             </div>
           </Card>
 
+          {/* Prijenos II. stupa u I. stup — istup */}
+          <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.navy}` }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 6 }}>🔁 Prijenos sredstava iz II. u I. stup ("istup") — tko, kada i na temelju čega</h3>
+            <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
+              ZOMF čl. 104. — pravo na "istup" iz II. stupa pri ostvarivanju mirovine
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
+              <div style={{ padding: "12px 16px", background: C.navy + "0a", borderRadius: 10, border: `1.5px solid ${C.navy}22` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>👤 Tko se može odlučiti za istup</div>
+                <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+                  <li><strong>Samo "dobrovoljni ulaznici"</strong> — osiguranici koji su u trenutku uvođenja II. stupa
+                    (1.1.2002.) imali <strong>40–50 godina</strong> i tada se sami, dobrovoljno, odlučili uključiti u
+                    II. stup (umjesto da ostanu isključivo u I. stupu, što je za tu dobnu skupinu bilo dopušteno).</li>
+                  <li>Osiguranici koji su 2002. imali <strong>do 40 god.</strong> bili su <strong>obvezno</strong>{" "}
+                    uključeni u II. stup i <strong>nemaju</strong> pravo na istup — za njih je kombinirana mirovina
+                    jedina opcija.</li>
+                  <li>Osiguranici koji su 2002. imali <strong>preko 50 god.</strong> ostali su isključivo u I. stupu i
+                    pitanje istupa za njih ne postoji (nikad nisu ni bili u II. stupu).</li>
+                </ul>
+              </div>
+              <div style={{ padding: "12px 16px", background: C.goldL, borderRadius: 10, border: `1.5px solid ${C.gold}33` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, marginBottom: 6 }}>⏱ Kada se odluka donosi</div>
+                <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+                  <li>Odluka se donosi <strong>jednom, u trenutku ostvarivanja prava na mirovinu</strong> (umirovljenje),
+                    kao dio zahtjeva koji se podnosi HZMO-u / REGOS-u.</li>
+                  <li>Odluka je <strong>trajna i nepovratna</strong> — nakon što je mirovina ugovorena (kombinirana ili
+                    isključivo I. stup), ne može se naknadno promijeniti.</li>
+                  <li>Prije odluke vrijedi zatražiti <strong>informativni izračun mirovine u oba scenarija</strong> (HZMO
+                    za I. stup, REGOS/MOD za kombiniranu) i usporediti ih.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div style={{ padding: "12px 16px", background: C.bg, borderRadius: 10, border: `1.5px solid ${C.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>⚖️ Elementi usporedbe — što gledati prije odluke</div>
+              <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+                <li><strong>Ako se izabere istup:</strong> cijeli akumulirani kapital iz II. stupa prenosi se u I. stup
+                  (HZMO), a mirovina se računa po <strong>punoj (neumanjenoj) I. stup formuli</strong> — kao da je
+                  osiguranik cijeli staž bio isključivo u I. stupu. U tom slučaju <strong>ne pripada dodatak od 27%</strong>{" "}
+                  (vidi karticu "Dodatak od 27%"), jer korekcija nije potrebna — mirovina nije bila umanjena.</li>
+                <li><strong>Ako se izabere kombinirana mirovina:</strong> I. stup dio obračunava se po umanjenoj formuli
+                  za "mješovite" osiguranike, ali se uvećava za 27% dodatak, a uz to se isplaćuje i renta iz II. stupa
+                  (na temelju stvarno akumuliranog kapitala i ostvarenog prinosa fonda).</li>
+                <li><strong>Trajanje članstva u II. stupu i ostvareni prinos</strong> ključno utječu na ishod usporedbe:
+                  kraće razdoblje uplata i/ili slabiji prinos fonda obično znače manji akumulirani kapital, pa II. stup
+                  renta + dodatak možda neće nadoknaditi razliku — u tom slučaju istup može biti povoljniji. Dugo
+                  razdoblje uplata uz dobar prinos (efekt složenog ukamaćivanja) obično čini kombiniranu mirovinu
+                  povoljnijom.</li>
+                <li>Razliku konačno utvrđuje <strong>HZMO/REGOS izračunom za konkretan slučaj</strong> — ova kartica
+                  objašnjava na čemu se odluka temelji, ne zamjenjuje službeni izračun.</li>
+              </ul>
+            </div>
+          </Card>
+
           {/* Nasljeđivanje — centralni prikaz */}
           <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.gold}` }}>
             <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 6 }}>👨‍👩‍👧 Nasljeđivanje sredstava II. stupa — što zakon zaista kaže</h3>
@@ -4132,7 +4247,7 @@ function EduView() {
               fontSize: 11, color: C.purple, lineHeight: 1.6 }}>
               💡 <strong>Praktični savjet:</strong> Vrstu mirovine odabirete jednom pri sklapanju ugovora s MOD-om
               — ta odluka je <strong>nepromjenjiva</strong>. Razgovarajte s partnerom i savjetnikom
-              prije odabira. Ako imate ovisne članove obitelji, razmatrajteo zajedničku mirovinu ili zajamčeno razdoblje,
+              prije odabira. Ako imate ovisne članove obitelji, razmatrajte zajedničku mirovinu ili zajamčeno razdoblje,
               iako će početna renta biti niža.
             </div>
           </Card>
@@ -4989,7 +5104,7 @@ function VodicView() {
       subtitle: "Rast karijere i plaće direktno povećavaju mirovinu",
       koraci: [
         { emoji: "📈", t: "Analiziraj PVB kretanje", opis: "HZMO može dati informativni izračun mirovine s trenutnim PVB-om. Ako si napredovao u karijeri i plaća ti raste, PVB raste — ali provjeri.", hitno: false },
-        { emoji: "🏠", t: "Razmotri balans: mirovina vs. nekretnina", opis: "Nekretnina nije mirovinska štednja — ali može biti izvor prihoda (najam) u mirovini. Nemoj zanemariti financijsku mirovinu dok kupuješ nekretninu.", hitno: false },
+        { emoji: "🏠", t: "Razmotri balans: mirovina vs. nekretnina vs. investicije", opis: "Nekretnina, ETF-ovi i dionice nisu mirovinska štednja — ali mogu biti dodatni izvor prihoda (najam, dividende, prodaja udjela) u mirovini. Dugoročno ulaganje u globalne ETF-ove (npr. preko brokera) nudi veću likvidnost i diverzifikaciju od nekretnine, uz slično ili veće dugoročno povećanje. Nemoj zanemariti financijsku mirovinu (II. i III. stup) dok ulažeš u nekretninu ili portfelj dionica/ETF-ova.", hitno: false },
         { emoji: "🌱", t: "Maksimiziran III. stup", opis: "Ako imaš poslodavca koji uplaćuje u III. stup — to je povećanje plaće bez poreza. Do 804 EUR/god. od poslodavca neoporezivo.", hitno: true },
         { emoji: "📊", t: "Kalkulator: koliko mi nedostaje?", opis: "Koristi tab 'Planer' u ovoj aplikaciji. Unesi željenu mirovinu i vidi točno koliko treba prilagoditi štednju, plaću ili datum umirovljenja.", hitno: false },
         { emoji: "🔄", t: "Provjeri kategoriju OMF", opis: "REGOS automatski prebacuje iz A u B 15 god. nakon prvog zaposlenja. Provjeri jesi li u pravoj kategoriji za svoju dob i procijeni.", hitno: false },
