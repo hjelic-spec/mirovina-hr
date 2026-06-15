@@ -715,13 +715,13 @@ function InfoBtn({ text }) {
   );
 }
 
-function Card({ children, style = {}, className = "" }) {
+function Card({ children, style = {}, className = "", ...rest }) {
   return (
     <div className={className} style={{
       background: C.white, borderRadius: 14, padding: 24,
       boxShadow: "0 2px 16px rgba(26,46,82,0.07)", border: `1px solid ${C.border}`,
       ...style
-    }}>{children}</div>
+    }} {...rest}>{children}</div>
   );
 }
 
