@@ -2947,17 +2947,13 @@ function BlogView() {
     if (!aiQ.trim()) return;
     setAiLoading(true); setAiA("");
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/ask-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
-          system: `Ti si stručnjak za hrvatski mirovinski sustav. Odgovaraj na pitanja korisnika jasno, točno i sažeto na hrvatskom jeziku. Citiraj relevantne zakone (ZOMO, ZOMF) i službene izvore (HZMO, HANFA, mss.gov.hr). AVM od 1.7.2025. = 14,45 EUR. Nikad ne izmišljaj podatke — ako ne znaš, reci to jasno.`,
-          messages: [{ role: "user", content: aiQ }]
-        })
+        body: JSON.stringify({ question: aiQ })
       });
       const d = await res.json();
-      setAiA(d.content?.[0]?.text || "Greška u odgovoru.");
+      setAiA(d.answer || d.error || "Greška u odgovoru.");
     } catch (e) {
       setAiA("Nije moguće dohvatiti odgovor. Provjerite vezu.");
     }
