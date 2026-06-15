@@ -1575,13 +1575,18 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
   const ukupno_standard = renta_standard * 12 * params.e65;
   const nasljedstvo_standard = 0;
 
-  // Stvarne opcije isplate prema ZOMF (osim standardne doživotne)
-  const renta_garancija10 = renta_standard * 0.95; // procjena: garancija isplate min. 10 god. (nasljednicima ako korisnik umre prije)
-  const ukupno_garancija10 = renta_garancija10 * 12 * params.e65;
-  const nasljedstvo_garancija10 = renta_garancija10 * 12 * Math.max(0, 10 - params.e65);
+  // Stvarne opcije isplate prema ZOMF — 2 osnovna modela (pojedinačna / obiteljska) ×
+  // 3 razine jamstva (bez jamstva, 5 god., 10 god.) = 6 kombinacija koje MOD mora ponuditi.
+  const G5 = 0.985;  // procjena: smanjenje rente za zajamčeno razdoblje isplate od 5 god.
+  const G10 = 0.95;  // procjena: smanjenje rente za zajamčeno razdoblje isplate od 10 god.
+  const OBIT = 0.88; // procjena: smanjenje rente za doživotni nastavak isplate bračnom drugu
 
-  const renta_obiteljska50 = renta_standard * 0.88; // procjena: 50% rente nastavlja se bračnom drugu nakon smrti korisnika
-  const ukupno_obiteljska50 = renta_obiteljska50 * 12 * params.e65;
+  const renta_pojedinacna = renta_standard;
+  const renta_pojedinacna_g5 = renta_standard * G5;
+  const renta_pojedinacna_g10 = renta_standard * G10;
+  const renta_obiteljska = renta_standard * OBIT;
+  const renta_obiteljska_g5 = renta_obiteljska * G5;
+  const renta_obiteljska_g10 = renta_obiteljska * G10;
 
   // DCF — diskontiranje budućih isplata na sadašnju vrijednost (stopa = pretpostavljeni neto prinos fonda)
   const DISCOUNT_R = params.neto_prinos;
@@ -1589,22 +1594,39 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
   const AF = annuityFactor(DISCOUNT_R, params.e65);
 
   const varijante_stvarne = [
-    { key: "standard", l: "Standardna doživotna renta", short: "Standardna",
-      renta: renta_standard, ukupno_zivot: ukupno_standard, nasljedstvo: nasljedstvo_standard, nasljedstvo_label: null, nasljedstvo_godina: null,
-      sub: "Isplaćuje se dok ste živi. Prestaje vašom smrću. Najviša mjesečna renta." },
-    { key: "garancija10", l: "Doživotna renta s garancijom isplate 10 god.", short: "S garancijom 10 g.",
-      renta: renta_garancija10, ukupno_zivot: ukupno_garancija10, nasljedstvo: nasljedstvo_garancija10, nasljedstvo_label: null, nasljedstvo_godina: 10,
-      sub: "Ako umrete prije 10. godine isplate, ostatak do 10 god. ide nasljednicima. Renta ~5% niža." },
-    { key: "obiteljska50", l: "Obiteljska doživotna mirovina (50% bračnom drugu)", short: "Obiteljska (50%)",
-      renta: renta_obiteljska50, ukupno_zivot: ukupno_obiteljska50, nasljedstvo: 0, nasljedstvo_label: "ovisi o dobi supružnika", nasljedstvo_godina: null,
-      sub: "Nakon vaše smrti, 50% rente nastavlja se isplaćivati bračnom drugu doživotno. Renta ~12% niža." },
+    { key: "standard", l: "Pojedinačna doživotna mirovina", short: "Pojedinačna", renta: renta_pojedinacna, garancija_god: null,
+      sub: "Isplaćuje se dok je korisnik živ. Prestaje njegovom smrću — najviša mjesečna renta.",
+      nasljedstvo_detalj: "Smrću korisnika isplata trajno prestaje. Preostala sredstva ostaju u zajedničkom riziko-pulu MOD-a (koriste se za isplate drugim korisnicima koji žive dulje od prosjeka). Nasljednici ne primaju ništa od sredstava II. stupa." },
+    { key: "pojedinacna_g5", l: "Pojedinačna doživotna mirovina sa zajamčenim razdobljem 5 god.", short: "Pojedinačna + 5g jamstvo", renta: renta_pojedinacna_g5, garancija_god: 5,
+      sub: "Doživotna renta uz jamstvo isplate prvih 5 god. nasljednicima ako korisnik umre ranije. Renta ~1,5% niža.",
+      nasljedstvo_detalj: "Ako korisnik umre u prvih 5 godina primanja mirovine, imenovani korisnik (nasljednik) prima preostale mjesečne iznose do kraja 5. godine. Nakon isteka tog razdoblja nasljednici ne primaju ništa, bez obzira koliko dugo bi korisnik inače živio." },
+    { key: "pojedinacna_g10", l: "Pojedinačna doživotna mirovina sa zajamčenim razdobljem 10 god.", short: "Pojedinačna + 10g jamstvo", renta: renta_pojedinacna_g10, garancija_god: 10,
+      sub: "Doživotna renta uz jamstvo isplate prvih 10 god. nasljednicima ako korisnik umre ranije. Renta ~5% niža.",
+      nasljedstvo_detalj: "Ako korisnik umre u prvih 10 godina primanja mirovine, imenovani korisnik (nasljednik) prima preostale mjesečne iznose do kraja 10. godine. Nakon isteka tog razdoblja nasljednici ne primaju ništa." },
+    { key: "obiteljska", l: "Obiteljska (zajednička) doživotna mirovina", short: "Obiteljska", renta: renta_obiteljska, garancija_god: null,
+      sub: "Nakon smrti korisnika, mirovina se nastavlja doživotno isplaćivati bračnom drugu. Renta ~12% niža.",
+      nasljedstvo_detalj: "Nakon smrti korisnika, isplata se nastavlja doživotno bračnom drugu (ako je živ), u istom ili ugovorenom iznosu. Kada i bračni drug umre, isplata trajno prestaje — drugi nasljednici (npr. djeca) ne primaju ništa od sredstava II. stupa." },
+    { key: "obiteljska_g5", l: "Obiteljska doživotna mirovina sa zajamčenim razdobljem 5 god.", short: "Obiteljska + 5g jamstvo", renta: renta_obiteljska_g5, garancija_god: 5,
+      sub: "Nastavak isplate bračnom drugu doživotno + jamstvo prvih 5 god. nasljednicima ako oboje umru ranije.",
+      nasljedstvo_detalj: "Isplata se nakon smrti korisnika nastavlja bračnom drugu doživotno. Ako oboje (korisnik i bračni drug) umru u prvih 5 godina primanja mirovine, preostale mjesečne iznose do kraja 5. godine prima imenovani nasljednik. Nakon isteka razdoblja, nasljednici ne primaju ništa." },
+    { key: "obiteljska_g10", l: "Obiteljska doživotna mirovina sa zajamčenim razdobljem 10 god.", short: "Obiteljska + 10g jamstvo", renta: renta_obiteljska_g10, garancija_god: 10,
+      sub: "Nastavak isplate bračnom drugu doživotno + jamstvo prvih 10 god. nasljednicima ako oboje umru ranije.",
+      nasljedstvo_detalj: "Isplata se nakon smrti korisnika nastavlja bračnom drugu doživotno. Ako oboje (korisnik i bračni drug) umru u prvih 10 godina primanja mirovine, preostale mjesečne iznose do kraja 10. godine prima imenovani nasljednik. Nakon isteka razdoblja, nasljednici ne primaju ništa." },
   ].map(v => {
-    const ukupna_vrijednost = v.ukupno_zivot + v.nasljedstvo + jednokratni_iznos;
+    const nasljedstvo = v.garancija_god ? v.renta * 12 * Math.max(0, v.garancija_god - params.e65) : 0;
+    const ukupno_zivot = v.renta * 12 * params.e65;
+    const ukupna_vrijednost = ukupno_zivot + nasljedstvo + jednokratni_iznos;
     const pv_renta = v.renta * 12 * AF;
-    const pv_nasljedstvo = v.nasljedstvo_godina ? v.nasljedstvo / Math.pow(1 + DISCOUNT_R, v.nasljedstvo_godina) : 0;
+    const pv_nasljedstvo = v.garancija_god ? nasljedstvo / Math.pow(1 + DISCOUNT_R, v.garancija_god) : 0;
     const dcf_ukupna_vrijednost = jednokratni_iznos + pv_renta + pv_nasljedstvo;
+    const obiteljska = v.key.startsWith("obiteljska");
+    const nasljedstvo_kratko = v.garancija_god
+      ? (obiteljska
+          ? (nasljedstvo > 0 ? `Bračni drug doživotno + ${fmt(nasljedstvo)} EUR (ostatak jamstva)` : `Bračni drug doživotno (jamstvo ${v.garancija_god} g. ≤ pretp. trajanje)`)
+          : (nasljedstvo > 0 ? `${fmt(nasljedstvo)} EUR (ostatak jamstva)` : `Ništa (jamstvo ${v.garancija_god} g. ≤ pretp. trajanje)`))
+      : (obiteljska ? "Nastavlja se bračnom drugu doživotno" : "Ništa — isplata prestaje");
     return {
-      ...v, ukupna_vrijednost,
+      ...v, ukupno_zivot, nasljedstvo, ukupna_vrijednost, nasljedstvo_kratko,
       razlika_kapital: ukupna_vrijednost - kapital,
       dcf_ukupna_vrijednost,
       dcf_razlika_kapital: dcf_ukupna_vrijednost - kapital,
@@ -1830,17 +1852,32 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
                   <div style={{ fontSize: 10, color: C.green, opacity: 0.8 }}>Stvarne opcije doživotne rente iz II. stupa</div>
                 </div>
               </div>
-              {varijante_stvarne.map(v => (
-                <button key={v.key} onClick={() => setParams(p => ({ ...p, zomf_varijanta: v.key }))}
-                  style={{ width: "100%", marginBottom: 6, padding: "8px 10px",
-                    border: `2px solid ${params.zomf_varijanta === v.key ? C.green : C.border}`,
-                    borderRadius: 9, background: params.zomf_varijanta === v.key ? C.green : C.white,
-                    color: params.zomf_varijanta === v.key ? "#fff" : C.navy,
-                    cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>{fmt(v.renta)} EUR/mj. — {v.l}</div>
-                  <div style={{ fontSize: 10, opacity: 0.8, marginTop: 2, lineHeight: 1.3 }}>{v.sub}</div>
-                </button>
+              {[
+                { label: "Pojedinačna mirovina", keys: ["standard", "pojedinacna_g5", "pojedinacna_g10"] },
+                { label: "Obiteljska (zajednička) mirovina", keys: ["obiteljska", "obiteljska_g5", "obiteljska_g10"] },
+              ].map(group => (
+                <div key={group.label} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.green, opacity: 0.7, margin: "4px 0 4px 2px", textTransform: "uppercase" }}>
+                    {group.label}
+                  </div>
+                  {group.keys.map(key => {
+                    const v = varijante_stvarne.find(x => x.key === key);
+                    return (
+                      <button key={v.key} onClick={() => setParams(p => ({ ...p, zomf_varijanta: v.key }))}
+                        style={{ width: "100%", marginBottom: 4, padding: "6px 10px",
+                          border: `2px solid ${params.zomf_varijanta === v.key ? C.green : C.border}`,
+                          borderRadius: 9, background: params.zomf_varijanta === v.key ? C.green : C.white,
+                          color: params.zomf_varijanta === v.key ? "#fff" : C.navy,
+                          cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>{fmt(v.renta)} EUR/mj. — {v.l}</div>
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
+              <div style={{ fontSize: 10, color: C.green, opacity: 0.8, marginTop: 4 }}>
+                {varijanta_odabrana.sub}
+              </div>
             </div>
           </div>
         </div>
@@ -1862,17 +1899,20 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>Doživotna renta — {varijanta_odabrana.l}</h3>
             <ResultBox label="Renta / mj." value={`${fmt(varijanta_odabrana.renta)} EUR`} color={C.green} big />
             <div style={{ marginTop: 10, fontSize: 11, color: C.slateL }}>
-              {varijanta_odabrana.key === "standard" && "Aproksimacija: Kapital / (e₆₅ × 12). MOD koristi vlastite aktuarske tablice."}
-              {varijanta_odabrana.key === "garancija10" && "Procjena ~5% niže rente uz garanciju isplate najmanje 10 godina nasljednicima. Stvarni iznos utvrđuje MOD aktuarskim izračunom."}
-              {varijanta_odabrana.key === "obiteljska50" && "Procjena ~12% niže rente uz nastavak isplate 50% bračnom drugu doživotno. Stvarni iznos ovisi o dobi supružnika i utvrđuje ga MOD."}
+              {varijanta_odabrana.key === "standard"
+                ? "Aproksimacija: Kapital / (e₆₅ × 12). MOD koristi vlastite aktuarske tablice."
+                : `${varijanta_odabrana.sub} Stvarni iznos utvrđuje MOD aktuarskim izračunom prema dobi, spolu i (za obiteljske varijante) dobi bračnog druga.`}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: C.green, background: C.greenL, padding: "8px 12px", borderRadius: 8 }}>
+              <strong>Nakon smrti korisnika:</strong> {varijanta_odabrana.nasljedstvo_detalj}
             </div>
           </Card>
 
           <Card>
             <h3 style={{ fontSize: 13, marginBottom: 12 }}>Usporedba ZOMF opcija isplate</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={varijante_stvarne.map(v => ({ name: v.short, renta: v.renta, key: v.key }))} margin={{ top: 5, right: 10, bottom: 30, left: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-10} textAnchor="end" interval={0} />
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart data={varijante_stvarne.map(v => ({ name: v.short, renta: v.renta, key: v.key }))} margin={{ top: 5, right: 10, bottom: 50, left: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-30} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${Math.round(v)}`} />
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <Tooltip formatter={v => [`${fmt(v)} EUR/mj.`, "Renta"]} />
@@ -1930,8 +1970,10 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
         <h3 style={{ fontSize: 15, marginBottom: 4 }}>Stvarne opcije isplate II. stupa (ZOMF)</h3>
         <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
           Pri umirovljenju, preostali kapital ({fmt(preostali)} EUR) MOD pretvara u jedan od ovih oblika doživotne
-          rente. Sve tri varijante u nastavku stvarno postoje u hrvatskom zakonodavnom okviru — razlikuju se po
-          tome kome i koliko dugo se renta isplaćuje.
+          rente. Svih 6 varijanti u nastavku — 2 osnovna modela (pojedinačna / obiteljska) × 3 razine jamstva isplate
+          (bez jamstva, 5 god., 10 god.) — stvarno postoje u hrvatskom zakonodavnom okviru (ZOMF) i svaki MOD ih je
+          dužan ponuditi. Razlikuju se po tome kome, koliko dugo i u kojem iznosu se renta isplaćuje, te u kojim
+          slučajevima nakon smrti korisnika nešto ostaje nasljednicima.
         </p>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
@@ -1959,8 +2001,8 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
                     {v.renta === renta_standard ? "—" : `${v.renta > renta_standard ? "+" : ""}${fmt(v.renta - renta_standard)} EUR`}
                   </td>
                   <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(v.ukupno_zivot)} EUR</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", color: v.nasljedstvo_label ? C.slateL : "inherit" }}>
-                    {v.nasljedstvo_label || `${fmt(v.nasljedstvo)} EUR`}
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 11 }}>
+                    {v.nasljedstvo_kratko}
                   </td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.ukupna_vrijednost)} EUR</td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700,
@@ -1995,6 +2037,61 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             <li><strong>Isplata cijelog kapitala</strong> — ako je akumulirani kapital ispod zakonskog minimuma za
               rentu, cijeli iznos isplaćuje se jednokratno ili se pripaja I. stupu (uvećava osnovicu).</li>
           </ul>
+        </div>
+      </Card>
+
+      {/* Nasljeđivanje sredstava II. stupa */}
+      <Card style={{ marginTop: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Nasljeđivanje sredstava II. stupa — kada i koliko</h3>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
+          Pravo nasljednika na sredstva iz II. stupa ovisi prije svega o tome je li osiguranik umro <strong>prije</strong>
+          ili <strong>nakon</strong> pretvaranja kapitala u rentu kod MOD-a.
+        </p>
+
+        <div style={{ marginBottom: 14, padding: "12px 16px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}33` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 6 }}>
+            1. Smrt prije umirovljenja (faza štednje — kapital još nije pretvoren u rentu)
+          </div>
+          <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+            <li><strong>Ako obitelj (bračni drug, djeca) nema pravo na obiteljsku mirovinu</strong> prema općim
+              propisima — <strong>cijeli</strong> akumulirani kapital s osobnog računa u II. stupu nasljeđuje se po
+              pravilima nasljednog prava, jednako kao i druga imovina. Nasljednici dobivaju 100% sredstava.</li>
+            <li><strong>Ako obitelj ima pravo na obiteljsku mirovinu</strong>, a osiguranik je u trenutku smrti imao
+              55+ god. i 10+ god. staža osiguranja u II. stupu, te bi obiteljska mirovina izračunata iz I.+II. stupa
+              bila veća nego samo iz I. stupa — sredstva iz II. stupa se <strong>prenose u I. stup</strong> (HZMO) i
+              koriste za financiranje te (veće) obiteljske mirovine, umjesto izravne isplate nasljednicima.</li>
+          </ul>
+        </div>
+
+        <div style={{ marginBottom: 6, padding: "12px 16px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>
+            2. Smrt nakon umirovljenja (kapital je već pretvoren u rentu) — ovisi o odabranoj ZOMF varijanti
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                  <th style={{ textAlign: "left", padding: "6px 10px" }}>Varijanta</th>
+                  <th style={{ textAlign: "left", padding: "6px 10px" }}>Što se događa nakon smrti korisnika</th>
+                </tr>
+              </thead>
+              <tbody>
+                {varijante_stvarne.map(v => (
+                  <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "6px 10px", fontWeight: 600, whiteSpace: "nowrap", verticalAlign: "top" }}>{v.l}</td>
+                    <td style={{ padding: "6px 10px", color: C.slate, lineHeight: 1.5 }}>{v.nasljedstvo_detalj}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
+          Ukratko: nasljednici <strong>nemaju pravo</strong> na sredstva iz već ugovorene rente osim (a) u
+          zajamčenom razdoblju kod varijanti s jamstvom, ako korisnik (i bračni drug, kod obiteljskih varijanti)
+          umre prije isteka tog razdoblja, ili (b) kod obiteljskih varijanti, dok je bračni drug još živ (renta mu
+          se nastavlja isplaćivati). Jednom isplaćena jednokratna isplata (do 20% kapitala) postaje osobna imovina
+          osiguranika i normalno se nasljeđuje neovisno o ovim pravilima.
         </div>
       </Card>
 
