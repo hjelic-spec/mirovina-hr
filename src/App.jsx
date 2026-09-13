@@ -1185,8 +1185,8 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
 
   const mf = params.vrsta === "starosna" ? 1.0
     : params.vrsta === "prijevremena" ? 1.0
-    : params.vrsta === "invalidska_potpuna" ? 1.0
-    : params.vrsta === "invalidska_djelomicna" ? 0.8 : 0.77;
+    : params.vrsta === "invalidska_potpuna" ? 1.1
+    : params.vrsta === "invalidska_djelomicna" ? 0.9 : 0.77;
 
   const res = calcStup1({ pvb: params.pvb, staz: params.staz, pf, mf, avm: params.avm });
 
@@ -2386,9 +2386,9 @@ function UkupnoView() {
           <div style={{ padding: "12px 16px", background: C.redL, borderRadius: 10, border: `1.5px solid ${C.red}33` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 6 }}>❌ Nema pravo na dodatak</div>
             <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-              <li>Osiguranici rođeni <strong>prije 1.1.1955.</strong> koji su u trenutku uvođenja II. stupa (2002.) ostali
-                isključivo u I. stupu — njihova mirovina obračunava se po "punoj" (neumanjenoj) I. stup formuli, pa
-                korekcija nije potrebna.</li>
+              <li>Osiguranici rođeni <strong>prije 1.1.1952.</strong> koji su u trenutku uvođenja II. stupa (2002.) imali
+                više od 50 godina i ostali isključivo u I. stupu — njihova mirovina obračunava se po "punoj"
+                (neumanjenoj) I. stup formuli, pa korekcija nije potrebna.</li>
               <li>Osiguranici koji su iskoristili <strong>pravo na istup iz II. stupa</strong> (ZOMF čl. 104) — cijeli
                 njihov staž obračunat je po I. stup formuli kao da nikad nisu bili u II. stupu, pa nemaju ni umanjenje
                 ni dodatak.</li>
@@ -4046,7 +4046,7 @@ function EduView() {
                   opis: "U roku od 15 dana od zaprimanja REGOS obavijesti, odabirete MOD na šalterima FINA-e, Mirovinskom informativnom centru ili putem e-Građani. Ako ne odaberete, REGOS vas raspoređuje u MOD po službenoj dužnosti.",
                   detalj: "Na raspolaganju su 4 MOD-a. Usporedite uvjete prije odabira — naknade i vrste mirovine mogu se razlikovati." },
                 { n: "4", boja: C.blue, naslov: "Jednokratna isplata do 20% (opcija)", emoji: "💵",
-                  opis: "Možete zatražiti jednokratnu isplatu do 20% akumuliranog kapitala PRIJE formiranja doživotne rente. MOD obračunava porez na dohodak na taj iznos. Uvjet: osnovna mirovina iz I. stupa mora biti veća od najniže mirovine.",
+                  opis: "Možete zatražiti jednokratnu isplatu do 20% akumuliranog kapitala PRIJE formiranja doživotne rente. MOD obračunava porez na dohodak na taj iznos. Uvjet: osnovna mirovina iz I. stupa mora biti veća od 115% najniže mirovine.",
                   detalj: null },
                 { n: "5", boja: C.purple, naslov: "Ugovor o mirovini s MOD-om", emoji: "📄",
                   opis: "MOD i vi potpisujete Ugovor o mirovini. U njemu se određuje: vrsta mirovine, iznos rente, uvjeti usklađivanja, eventualno zajamčeno razdoblje i ime korisnika.",
@@ -4357,7 +4357,7 @@ function Stup3View({ user, onAuthRequired }) {
             Hrvatska država daje <strong style={{ color: "#7bffb0" }}>15% od vaše godišnje uplate</strong> besplatno — do
             maksimalnih <strong style={{ color: "#7bffb0" }}>{DPS_MAX.toFixed(2)} EUR godišnje</strong>.
             Ostvaruje se uplatom <strong style={{ color: "#7bffb0" }}>{DPS_MAX_UPLATA} EUR godišnje</strong> ({(DPS_MAX_UPLATA/12).toFixed(2)} EUR/mj.).
-            <br/>Na III. stup <strong style={{ color: "#7bffb0" }}>ne plaća se porez</strong> ni u fazi štednje ni pri isplati.
+            <br/>U fazi štednje <strong style={{ color: "#7bffb0" }}>nema poreza na prinos</strong>. Isplata rente oporezuje se porezom na dohodak uz primjenu osobnog odbitka; prijevremeni otkup prije 55. god. povlači i povrat DPS-a.
           </p>
         </div>
         <div style={{ display: "flex", gap: 14 }}>
