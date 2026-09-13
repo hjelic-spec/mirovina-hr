@@ -2,14 +2,113 @@
 <html lang="hr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Kalkulator mirovine za Hrvatsku — I., II. i III. stup, edukacija, usporedba svjetskih sustava i praktični vodič." />
-    <meta name="keywords" content="mirovina, kalkulator, Hrvatska, HZMO, OMF, AVM, II stup, III stup, mirovinski fond" />
-    <meta property="og:title" content="Mirovinski Sustav HR — Kalkulator i edukacija" />
-    <meta property="og:description" content="Izračunajte svoju mirovinu iz I., II. i III. stupa. Usporedite sa svjetskim sustavima. Saznajte što učiniti odmah." />
+
+    <!-- ── Primary SEO ─────────────────────────────────────────────────────── -->
+    <title>Kalkulator Mirovine Hrvatska — I., II. i III. stup | Mirovinski Sustav HR</title>
+    <meta name="description" content="Besplatni kalkulator mirovine za Hrvatsku. Izračunajte I. i II. stup mirovinu, saznajte o 27% dodatku, oporezivanju, prijevremenoj mirovini i strategijama za veću mirovinu. Ažurirano 2026." />
+    <meta name="author" content="Mirovinski Sustav HR" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://mirovina-hr.vercel.app/" />
+
+    <!-- ── Open Graph ───────────────────────────────────────────────────────── -->
     <meta property="og:type" content="website" />
-    <title>Mirovinski Sustav HR — Kalkulator</title>
+    <meta property="og:site_name" content="Mirovinski Sustav HR" />
+    <meta property="og:title" content="Kalkulator Mirovine Hrvatska — I., II. i III. stup" />
+    <meta property="og:description" content="Besplatni kalkulator i vodič za hrvatski mirovinski sustav. Izračunajte svoju mirovinu, saznajte o 27% dodatku, porezu i optimalnoj strategiji umirovljenja." />
+    <meta property="og:url" content="https://mirovina-hr.vercel.app/" />
+    <meta property="og:locale" content="hr_HR" />
+
+    <!-- ── Twitter Card ─────────────────────────────────────────────────────── -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Kalkulator Mirovine Hrvatska — I., II. i III. stup" />
+    <meta name="twitter:description" content="Besplatni kalkulator i vodič za hrvatski mirovinski sustav. Izračunajte svoju mirovinu, saznajte o 27% dodatku i optimalnoj strategiji." />
+
+    <!-- ── Icons & Manifest ─────────────────────────────────────────────────── -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#1a2e52" />
+
+    <!-- ── Structured Data (JSON-LD) ────────────────────────────────────────── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Mirovinski Sustav HR",
+      "url": "https://mirovina-hr.vercel.app/",
+      "description": "Besplatni kalkulator i edukativni vodič za hrvatski mirovinski sustav — I., II. i III. mirovinski stup.",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "inLanguage": "hr",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "EUR"
+      },
+      "provider": {
+        "@type": "Organization",
+        "name": "Mirovinski Sustav HR"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Kako se izračunava mirovina u Hrvatskoj?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Mirovina iz I. stupa = Osobni bodovi (PVB × staž × PF) × MF × AVM. AVM iznosi 14,45 EUR od 1.7.2025. Osobni bodovi ovise o prosječnoj plaći u odnosu na hrvatski prosjek. Najviša mirovina ograničena je na staž × 3,8 × PF × MF × AVM."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Tko ima pravo na dodatak od 27% na mirovinu?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Pravo na dodatak od 27% imaju osiguranici koji su stekli kombiniranu mirovinu iz I. i II. stupa. Dodatak se primjenjuje na I. stup dio mirovine od 1.1.2024. (NN 156/2023). Nema ga tko je iskoristio istup iz II. stupa ili tko je bio isključivo u I. stupu (generacije rođene prije 1.1.1952.)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kolika je kazna za prijevremenu mirovinu u Hrvatskoj?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Za svaki mjesec ranijeg odlaska u mirovinu polazni faktor (PF) smanjuje se za 0,2%. Primjer: 3 godine ranije = −7,2% mirovine trajno. Od 1.1.2026. smanjenje prestaje kad korisnik navrši 70 godina (ZOMO čl. 77)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Mogu li prenijeti sredstva iz II. u I. mirovinski stup?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Da, tzv. istup (ZOMF čl. 104) moguć je za osiguranike koji su dobrovoljno ušli u II. stup — generacije koje su 2002. imale 40–50 godina. Sva sredstva prenose se u I. stup i mirovina se uvećava. Zahtjev se podnosi HZMO-u najkasnije dan prije stjecanja prava na mirovinu."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kada se ukida porez na mirovine u Hrvatskoj?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ministar financija Primorac najavio je ukidanje poreza na dohodak od mirovina od 1. siječnja 2027. Do tada mirovine podliježu porezu uz osobni odbitak 600 EUR/mj. i halviranje (obračunati porez smanjuje se za 50%)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Što je AVM (aktualna vrijednost mirovine)?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "AVM je 'cijena jednog mirovinskog boda'. Od 1.7.2025. AVM iznosi 14,45 EUR. Svaki osobni bod množi se s AVM-om za izračun bruto mirovine. AVM se usklađuje dva puta godišnje prema indeksima plaća i cijena (Swiss index)."
+          }
+        }
+      ]
+    }
+    </script>
+
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #eef0f8; }

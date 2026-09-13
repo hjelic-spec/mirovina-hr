@@ -1,0 +1,18 @@
+{
+  "name": "Mirovinski Sustav HR",
+  "short_name": "Mirovina HR",
+  "description": "Besplatni kalkulator i vodič za hrvatski mirovinski sustav — I., II. i III. stup.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef0f8",
+  "theme_color": "#1a2e52",
+  "lang": "hr",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
