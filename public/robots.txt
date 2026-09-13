@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://mirovina-hr.vercel.app/sitemap.xml
+Sitemap: https://mirovinskisustav.com.hr/sitemap.xml
