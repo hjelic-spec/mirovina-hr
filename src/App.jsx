@@ -1382,6 +1382,9 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
                   <div style={{ marginTop: 8, padding: "6px 10px", background: C.redL, borderRadius: 6 }}>
                     ⚠ <strong>Pažnja:</strong> 3 godine ranije = −7,2% mirovine zauvijek. Na 20 god. mirovine, to je ekvivalent 1,4 god. bez prihoda.
                   </div>
+                  <div style={{ marginTop: 8, padding: "6px 10px", background: C.greenL, borderRadius: 6 }}>
+                    ✅ <strong>Od 1.1.2026. (ZOMO čl. 77):</strong> korisnicima prijevremene mirovine koji navrše <strong>70 godina</strong>, Zavod po službenoj dužnosti ukida smanjenje PF-a od sljedećeg mjeseca.
+                  </div>
                 </div>
               }
             />
@@ -5046,7 +5049,7 @@ function VodicView() {
         { emoji: "🌱", t: "Maksimiziran III. stup", opis: "Ako imaš poslodavca koji uplaćuje u III. stup — to je povećanje plaće bez poreza. Do 804 EUR/god. od poslodavca neoporezivo.", hitno: true },
         { emoji: "📊", t: "Kalkulator: koliko mi nedostaje?", opis: "Koristi tab 'Planer' u ovoj aplikaciji. Unesi željenu mirovinu i vidi točno koliko treba prilagoditi štednju, plaću ili datum umirovljenja.", hitno: false },
         { emoji: "🔄", t: "Provjeri kategoriju OMF", opis: "REGOS automatski prebacuje iz A u B 15 god. nakon prvog zaposlenja. Provjeri jesi li u pravoj kategoriji za svoju dob i procijeni.", hitno: false },
-        { emoji: "👶", t: "Porodiljni dopust = mirovinski staž!", opis: "Od 1.7.2025. svako dijete donosi 12 mj. dodanog staža. Ovo se automatski uračunava — ali provjeri da je HZMO evidentirao.", hitno: false },
+        { emoji: "👶", t: "Porodiljni dopust = mirovinski staž!", opis: "Od 1.7.2025. majci (ili posvojiteljici) se za svako dijete automatski dodaje 12 mj. mirovinskog staža. Provjeri da je HZMO ispravno evidentirao.", hitno: false },
       ],
     },
     { range: [45,54], label: "45–54 god.", emoji: "⚙️", color: C.gold,
