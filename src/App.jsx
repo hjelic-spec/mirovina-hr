@@ -31,6 +31,17 @@ const C = {
 const AVM = 14.45; // EUR, od 1.7.2025.
 const MIN_MIROVINA_FAKTOR = 1.06; // najniža = 106% AVM * staž * PF * MF
 const MAX_VB = 3.8; // maksimalni vrijednosni bodovi
+const OSOBNI_ODBITAK = 600; // EUR/mj., od 1.1.2025. (ZPD, NN 152/2024)
+const POREZNI_PRAG_MJ = 4200; // EUR/mj. porezne osnovice — do ovog iznosa stopa 20%, iznad 30%
+// Mirovine: obračunati porez smanjuje se za 50% (ZPD čl. 45., NN 152/2024)
+function calcNetoMirovina(bruto) {
+  const osnovica = Math.max(0, bruto - OSOBNI_ODBITAK);
+  const porezBruto = osnovica <= POREZNI_PRAG_MJ
+    ? osnovica * 0.20
+    : POREZNI_PRAG_MJ * 0.20 + (osnovica - POREZNI_PRAG_MJ) * 0.30;
+  const porezEfektivni = porezBruto * 0.50; // halviranje za mirovine
+  return { osnovica, porezBruto, porezEfektivni, neto: bruto - porezEfektivni };
+}
 
 // ─── STORAGE HELPERS ────────────────────────────────────────────────────────
 async function stGet(key) {
@@ -1497,6 +1508,41 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               {res.bruto < res.najniza && <> Napomena: bruto mirovina je ispod zakonskog minimuma, pa je efektivna
                 mirovina podignuta na najnižu mirovinu od {fmt(res.najniza)} EUR.</>}
             </div>
+
+            {/* Neto mirovina */}
+            {(() => {
+              const t = calcNetoMirovina(res.efektivna);
+              return (
+                <div style={{ marginTop: 12, padding: "12px 14px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 8 }}>💶 Aproksimacija neto mirovine (na račun)</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Bruto mirovina</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{fmt(res.efektivna)} EUR</div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Porez na dohodak</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: t.porezEfektivni > 0 ? C.red : C.green }}>
+                        {t.porezEfektivni > 0 ? `−${fmt(t.porezEfektivni)} EUR` : "0,00 EUR"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>≈ Neto (bez prireza)</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{fmt(t.neto)} EUR</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.6 }}>
+                    {t.osnovica <= 0
+                      ? <>Mirovina ≤ {OSOBNI_ODBITAK} EUR — u cijelosti pokrivena osobnim odbitkom, <strong>porez = 0</strong>.</>
+                      : <>Osobni odbitak: {OSOBNI_ODBITAK} EUR/mj. · Porezna osnovica: {fmt(t.osnovica)} EUR · Porez (bruto {fmt(t.porezBruto)} EUR) × <strong>50% halviranje</strong> za mirovine = {fmt(t.porezEfektivni)} EUR. Prirez (po JLS) nije uključen.</>
+                    }
+                    <span style={{ display: "block", marginTop: 6, padding: "4px 8px", background: C.amberL, borderRadius: 6, color: C.amber, fontWeight: 600 }}>
+                      ⏳ Od 1.1.2027. porez na dohodak od mirovina se ukida (najava Vlade RH).
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
 
           <Card>
@@ -3972,6 +4018,45 @@ function EduView() {
               </div>
             </Card>
           </div>
+
+          {/* Oporezivanje mirovina */}
+          <Card style={{ marginBottom: 18, border: `2px solid ${C.gold}33` }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 14 }}>💶 Oporezivanje mirovina — što ostaje na računu</h3>
+            <div style={{ padding: "10px 14px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}55`, marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 4 }}>⏳ Od 1.1.2027. porez na mirovine se ukida</div>
+              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
+                Ministar financija Primorac najavio je da se od 1. siječnja 2027. više neće oporezivati mirovine. Priprema se novi zakon. Do tada vrijede pravila u nastavku.
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Kako se obračunava porez</div>
+                <ol style={{ fontSize: 12, color: C.slate, lineHeight: 1.8, paddingLeft: 16, margin: 0 }}>
+                  <li>Porezna osnovica = mirovina − <strong>{OSOBNI_ODBITAK} EUR</strong> (osobni odbitak/mj.)</li>
+                  <li>Porez (bruto): do 4.200 EUR/mj. → <strong>20%</strong>, iznad → <strong>30%</strong></li>
+                  <li>Efektivni porez = porez × <strong>50%</strong> (halviranje za mirovine, ZPD čl. 45.)</li>
+                  <li>Prirez: ovisno o JLS (općini/gradu)</li>
+                </ol>
+              </div>
+              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Primjeri neto mirovine</div>
+                {[600, 900, 1200, 1800].map(b => {
+                  const t = calcNetoMirovina(b);
+                  return (
+                    <div key={b} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, borderBottom: `1px solid ${C.border}`, padding: "4px 0" }}>
+                      <span style={{ color: C.slateL }}>{b} EUR bruto</span>
+                      <span style={{ fontWeight: 700, color: C.green }}>≈ {fmt(t.neto)} EUR neto</span>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10, color: C.slateL, marginTop: 6 }}>Bez prireza · osobni odbitak {OSOBNI_ODBITAK} EUR</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.slateL, lineHeight: 1.6 }}>
+              Mirovine ≤ {OSOBNI_ODBITAK} EUR/mj. ne plaćaju porez. Osobni odbitak može biti veći uz uzdržavane članove ili invaliditet.
+              Točan obračun radi HZMO i isplaćuje neto iznos. Godišnji obračun (porezna prijava) nije obveza za umirovljenike s jednim izvorom dohotka.
+            </div>
+          </Card>
 
           {/* Timeline isplate */}
           <Card style={{ marginBottom: 18 }}>
