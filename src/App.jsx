@@ -2935,30 +2935,10 @@ function SP500MirovinaBlog() {
 // ─── BLOG ────────────────────────────────────────────────────────────────────
 function BlogView() {
   const [post, setPost] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiQ, setAiQ] = useState("");
-  const [aiA, setAiA] = useState("");
   const [filter, setFilter] = useState("Sve");
 
   const cats = ["Sve", ...new Set(BLOG_POSTS.map(p => p.category))];
   const filtered = filter === "Sve" ? BLOG_POSTS : BLOG_POSTS.filter(p => p.category === filter);
-
-  async function askAI() {
-    if (!aiQ.trim()) return;
-    setAiLoading(true); setAiA("");
-    try {
-      const res = await fetch("/api/ask-ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: aiQ })
-      });
-      const d = await res.json();
-      setAiA(d.answer || d.error || "Greška u odgovoru.");
-    } catch (e) {
-      setAiA("Nije moguće dohvatiti odgovor. Provjerite vezu.");
-    }
-    setAiLoading(false);
-  }
 
   function renderMd(text) {
     return text.split("\n").map((line, i) => {
@@ -3036,44 +3016,6 @@ function BlogView() {
       {/* ── S&P 500 vs HR mirovinski sustav ── */}
       <SP500MirovinaBlog />
 
-      {/* AI Q&A */}
-      <Card style={{ border: `2px solid ${C.gold}33` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <div style={{ background: C.amberL, borderRadius: 10, padding: "8px 10px" }}>
-            <Star size={18} color={C.gold} />
-          </div>
-          <div>
-            <h3 style={{ fontSize: 15, marginBottom: 2 }}>Pitaj AI stručnjaka</h3>
-            <p style={{ fontSize: 12, color: C.slateL }}>Odgovori temeljeni na ZOMO, HANFA i HZMO izvorima</p>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-          <input value={aiQ} onChange={e => setAiQ(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && askAI()}
-            placeholder="npr. Kada mi je isplativo odgoditi mirovinu? Što je PVB? Kako funkcionira jednokratna isplata 20%?"
-            style={{ flex: 1, padding: "11px 14px", border: `1.5px solid ${C.border}`, borderRadius: 9, fontSize: 13 }} />
-          <button onClick={askAI} disabled={aiLoading} style={{
-            padding: "11px 22px", background: aiLoading ? C.slateL : `linear-gradient(135deg, ${C.gold}, ${C.goldL})`,
-            border: "none", borderRadius: 9, color: C.navy, fontWeight: 700, fontSize: 13,
-            minWidth: 100,
-          }}>
-            {aiLoading ? "…" : "Pitaj"}
-          </button>
-        </div>
-        {aiLoading && (
-          <div style={{ padding: "14px", background: C.amberL, borderRadius: 9, fontSize: 13, color: C.amber }}>
-            AI analizira vaše pitanje…
-          </div>
-        )}
-        {aiA && (
-          <div style={{ padding: "16px", background: C.bg, borderRadius: 9, fontSize: 13, lineHeight: 1.7, color: C.navy, whiteSpace: "pre-wrap" }}>
-            {aiA}
-          </div>
-        )}
-        <div style={{ marginTop: 10, fontSize: 11, color: C.slateL }}>
-          Primjeri pitanja: "Kolika je kazna za prijevremenu mirovinu?", "Što je AVM i kako se usklađuje?", "Mogu li nasljediti II. stup?"
-        </div>
-      </Card>
     </div>
   );
 }
