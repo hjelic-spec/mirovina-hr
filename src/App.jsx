@@ -770,6 +770,16 @@ const css = `
   ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #c0c8e0; border-radius: 3px; }
   .fadeIn { animation: fadeIn 0.35s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 760px) {
+    main [style*="grid-template-columns: 1fr 1fr"],
+    main [style*="grid-template-columns: repeat(3"],
+    main [style*="grid-template-columns: repeat(4"],
+    main [style*="grid-template-columns: 2fr 3fr 1fr"] { grid-template-columns: 1fr !important; }
+    main { padding: 18px 12px 60px !important; }
+    .main-nav, .sub-nav { position: static !important; padding: 0 12px !important; }
+    .grp-btn { height: 40px !important; padding: 0 9px !important; font-size: 12px !important; }
+    .data-banner { display: none !important; }
+  }
 `;
 
 function Tooltip2({ text, children }) {
@@ -5127,9 +5137,162 @@ function VodicView() {
 }
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
+// ─── POČNI OVDJE ─────────────────────────────────────────────────────────────
+const KORACI_PO_DOBI = [
+  { do: 34, naslov: "Imate vremena — to je vaša prednost", koraci: [
+    { t: "Provjerite uplate u II. stup", d: "Na regos.hr ili u e-Građanima provjerite uplaćuje li poslodavac svaki mjesec 5 % vaše bruto plaće.", tab: "stup2" },
+    { t: "Otvorite III. stup", d: "Uz 55,30 EUR mjesečno država dodaje 99,54 EUR godišnje. Kroz 30+ godina složena kamata napravi veliku razliku.", tab: "stup3" },
+    { t: "Razmislite o kategoriji fonda", d: "Ako ne izaberete, REGOS vas stavlja u kategoriju B. S 30+ godina do mirovine kategorija A dugoročno nosi više.", tab: "edu" },
+  ]},
+  { do: 49, naslov: "Sredina karijere — vrijeme za provjeru", koraci: [
+    { t: "Pogledajte koliko vam nedostaje", d: "Planer pokazuje razliku između očekivane i željene mirovine i koliko štednje je potrebno.", tab: "planer" },
+    { t: "Iskoristite III. stup i poslodavca", d: "Poslodavac vam može uplaćivati do 804 EUR godišnje u III. stup bez poreza i doprinosa.", tab: "stup3" },
+    { t: "Provjerite staž", d: "U e-Građanima pogledajte elektronički zapis o stažu i javite HZMO-u ako nešto nedostaje.", tab: "vodic" },
+  ]},
+  { do: 57, naslov: "Bliže mirovini — pripremite odluke", koraci: [
+    { t: "Zatražite informativni izračun", d: "Na mojamirovina.hr ili u e-Građanima vidjet ćete stvarne podatke o plaćama i stažu.", tab: "vodic" },
+    { t: "Samo I. stup ili I. + II.?", d: "Isprobajte usporedbu sa stanjem svog računa u II. stupu. To je najvažnija odluka pri umirovljenju.", tab: "ukupno" },
+    { t: "Smanjite rizik u II. stupu", d: "Kad do mirovine ostane manje od 10 godina, REGOS vas prebacuje iz kategorije A u B; u zadnjih 5 godina razmislite o C.", tab: "edu" },
+  ]},
+  { do: 200, naslov: "Pred mirovinom — vrijeme odluka", koraci: [
+    { t: "Kada otići?", d: "Svaka godina ranije smanjuje mirovinu iz I. stupa za 2,4 % (do 70. godine), a svaka godina kasnije trajno je povećava za 5,4 %.", tab: "stup1" },
+    { t: "Samo I. stup ili I. + II.?", d: "Usporedite obje mogućnosti; HZMO prije odluke šalje informativni izračun.", tab: "ukupno" },
+    { t: "Vrsta mirovine u MOD-u i 20 % jednokratno", d: "Ako birate oba stupa: pojedinačna, obiteljska ili sa zajamčenim razdobljem. Odluka je trajna.", tab: "stup2" },
+    { t: "Zahtjev HZMO-u na vrijeme", d: "Predajte zahtjev barem 3 mjeseca prije željenog datuma umirovljenja.", tab: "vodic" },
+  ]},
+];
+
+function PocniOvdjeView({ onNavigate }) {
+  const [godRodj, setGodRodj] = useState(1975);
+  const [spol, setSpol] = useState("M");
+  const [staz, setStaz] = useState(25);
+  const [placa, setPlaca] = useState(PROSJ_BRUTO);
+  const [uDrugom, setUDrugom] = useState(null);
+
+  const dob = TEKUCA_GODINA - godRodj;
+  const uII = uDrugom ?? godRodj >= 1962;
+  const starDob = dobZaStarosnu(spol, godRodj);
+  const prij = dobZaPrijevremenu(spol, godRodj);
+  const godDo = Math.max(0, starDob - dob);
+  const stazNaKraju = staz + godDo;
+  const godDoPrij = Math.max(0, prij.dob - dob);
+  const stazPrij = staz + godDoPrij;
+  const prijMoguca = stazPrij >= prij.staz;
+  const dugogodisnji = staz + Math.max(0, 60 - dob) >= 41;
+
+  const pvb = placa / PROSJ_BRUTO;
+  const godinaMir = godRodj + Math.ceil(starDob);
+  const godII = uII ? Math.min(stazNaKraju, godinaMir - 2002) : 0;
+  const rentaII = uII ? rentaDozivotna(calcStup2FV({ bruto_placa: placa, god_stednje: godII, neto_prinos: 0.03 }) * 0.8) : 0;
+  const iz = calcIzbor({ pvb, staz: stazNaKraju, stazOd2002: godII, rentaII });
+  const procjena = uII ? Math.max(iz.samoIUkupno, iz.kombinirana) : iz.samoIUkupno;
+  const neto26 = calcNetoMirovina(procjena).neto;
+  const neto27 = calcNetoMirovina(procjena, { godina: 2027 }).neto;
+  const skupina = KORACI_PO_DOBI.find(k => dob <= k.do);
+
+  const kartica = { background: C.white, borderRadius: 14, padding: 20, boxShadow: "0 2px 16px rgba(26,46,82,0.07)", border: `1px solid ${C.border}` };
+  const link = (tab, tekst = "Detaljnije →") => (
+    <button onClick={() => onNavigate(tab)} style={{ marginTop: 10, background: "none", border: "none", color: C.blue, fontWeight: 600, fontSize: 12, padding: 0, cursor: "pointer" }}>{tekst}</button>
+  );
+
+  return (
+    <div className="fadeIn">
+      <div style={{ marginBottom: 18 }}>
+        <h1 style={{ fontSize: 26, marginBottom: 6 }}>Vaša mirovina u 3 koraka</h1>
+        <p style={{ color: C.slate, fontSize: 14, lineHeight: 1.6, maxWidth: 720 }}>
+          Unesite nekoliko podataka i odmah vidite <strong>kada</strong> možete u mirovinu, <strong>okvirno koliko</strong> ćete
+          primati i <strong>što</strong> vam je sada pametno napraviti. Ništa se ne sprema i nije potrebna prijava.
+        </p>
+      </div>
+
+      <div style={{ ...kartica, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "4px 24px" }}>
+          <Slider label={`Godina rođenja (sada ${dob} god.)`} value={godRodj} min={1950} max={2008} step={1} format={v => `${v}.`} onChange={setGodRodj} />
+          <Slider label="Godine staža do danas" value={staz} min={0} max={Math.max(0, Math.min(50, dob - 15))} step={1} format={v => `${v} god.`} onChange={setStaz} />
+          <Slider label="Bruto plaća (mjesečno)" value={placa} min={MIN_PLACA} max={6000} step={50} format={v => `${fmt(v, 0)} EUR`} onChange={setPlaca} />
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.navy, marginBottom: 6 }}>Spol</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {[["M", "Muškarac"], ["Ž", "Žena"]].map(([v, l]) => (
+                <button key={v} onClick={() => setSpol(v)} style={{ flex: 1, padding: "7px", borderRadius: 8, border: `2px solid ${spol === v ? C.navy : C.border}`,
+                  background: spol === v ? C.navy : C.white, color: spol === v ? "#fff" : C.navy, fontSize: 12, fontWeight: 600 }}>{l}</button>
+              ))}
+            </div>
+            <label style={{ fontSize: 12, color: C.slate, display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" checked={uII} onChange={e => setUDrugom(e.target.checked)} />
+              Uplaćujem i u II. stup (mirovinski fond)
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 18 }}>
+        <div style={{ ...kartica, borderTop: `4px solid ${C.navy}` }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.navy, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>1 · Kada mogu u mirovinu</div>
+          <div style={{ fontSize: 13, color: C.slate, lineHeight: 1.8 }}>
+            <div><strong>Starosna:</strong> s {fmtDob(starDob)} {godDo > 0 ? `(oko ${godinaMir}.)` : "— već ispunjavate dob"}, uz najmanje 15 godina staža.</div>
+            <div><strong>Prijevremena:</strong> s {fmtDob(prij.dob)} uz {fmtDob(prij.staz)} staža
+              {" "}— {prijMoguca ? <span style={{ color: C.green, fontWeight: 600 }}>po vašim podacima moguće</span> : <span style={{ color: C.red, fontWeight: 600 }}>nemate dovoljno staža</span>}.</div>
+            {dugogodisnji && <div><strong>Dugogodišnji osiguranik:</strong> s 60 godina i 41 godinom staža, bez umanjenja.</div>}
+          </div>
+          <div style={{ marginTop: 10, padding: "8px 12px", background: C.bg, borderRadius: 8, fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
+            Svaka godina ranije: <strong style={{ color: C.red }}>−2,4 %</strong> (do 70. godine) · svaka godina kasnije: <strong style={{ color: C.green }}>+5,4 %</strong> trajno.
+          </div>
+          {link("stup1", "Isprobajte odlazak ranije ili kasnije →")}
+        </div>
+
+        <div style={{ ...kartica, borderTop: `4px solid ${C.green}` }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.green, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>2 · Okvirno koliko</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: C.navy, fontFamily: "'Playfair Display', serif" }}>{fmt(procjena, 0)} EUR</div>
+          <div style={{ fontSize: 12, color: C.slateL, marginBottom: 8 }}>bruto mjesečno, u današnjem novcu, uz {stazNaKraju} god. staža</div>
+          <div style={{ fontSize: 13, color: C.slate, lineHeight: 1.7 }}>
+            Neto: <strong>{fmt(neto26, 0)} EUR</strong> po pravilima za 2026. · <strong>{fmt(neto27, 0)} EUR</strong> ako se od 2027. ukine porez na mirovine.
+          </div>
+          {uII && (
+            <div style={{ marginTop: 8, fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
+              Samo I. stup: {fmt(iz.samoIUkupno, 0)} EUR · I. + II. stup: {fmt(iz.kombinirana, 0)} EUR.
+            </div>
+          )}
+          <div style={{ marginTop: 8, fontSize: 10, color: C.slateL, lineHeight: 1.5 }}>
+            Pretpostavka: plaća u istom omjeru prema prosjeku RH kroz cijeli radni vijek. Stvarni iznos ovisi o plaćama iz cijele karijere.
+          </div>
+          {link(uII ? "ukupno" : "stup1")}
+        </div>
+
+        <div style={{ ...kartica, borderTop: `4px solid ${C.gold}` }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.gold, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>3 · Što napraviti sada</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>{skupina.naslov}</div>
+          {skupina.koraci.map((k, i) => (
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{i + 1}. {k.t}</div>
+              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.55 }}>{k.d}{" "}
+                <button onClick={() => onNavigate(k.tab)} style={{ background: "none", border: "none", color: C.blue, fontSize: 12, padding: 0, cursor: "pointer" }}>→</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...kartica, background: C.navy, color: "#fff" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.goldL, marginBottom: 8 }}>Kako funkcionira mirovina u Hrvatskoj — u tri rečenice</div>
+        <div style={{ fontSize: 13, lineHeight: 1.75, color: "rgba(255,255,255,0.85)" }}>
+          <strong>I. stup</strong> (HZMO): od plaće se uplaćuje 15 % (ili 20 % ako niste u II. stupu); mirovina ovisi o godinama staža i o tome koliko ste
+          zarađivali u odnosu na prosjek, a država je usklađuje dvaput godišnje.{" "}
+          <strong>II. stup</strong>: 5 % plaće ide na vaš osobni račun u mirovinskom fondu i pri umirovljenju postaje dodatna doživotna mirovina.{" "}
+          <strong>III. stup</strong>: dobrovoljna štednja uz državni poticaj od 15 %.
+        </div>
+        <button onClick={() => onNavigate("edu")} style={{ marginTop: 12, background: C.gold, color: C.navy, border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+          Nauči osnove sustava →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);         // null = guest
-  const [tab, setTab] = useState("edu");
+  const [tab, setTabState] = useState("pocni");
+  const setTab = (t) => { setTabState(t); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const [authModal, setAuthModal] = useState(null); // null | reason string
   const [feedbackModal, setFeedbackModal] = useState(false);
   const [scenariiRefresh, setScenariiRefresh] = useState(0);
@@ -5163,18 +5326,27 @@ export default function App() {
   }
 
   const tabs = [
-    { id: "edu",      icon: <BookOpen size={15} />,   label: "Edukacija" },
+    { id: "pocni",    icon: <ChevronRight size={15} />, label: "Počni ovdje" },
     { id: "stup1",    icon: <Calculator size={15} />, label: "I. stup" },
     { id: "stup2",    icon: <PiggyBank size={15} />,  label: "II. stup" },
     { id: "stup3",    icon: <TrendingUp size={15} />, label: "III. stup" },
-    { id: "ukupno",   icon: <BarChart2 size={15} />,  label: "Ukupno" },
-    { id: "invalid",  icon: <Shield size={15} />,     label: "Invalidska" },
-    { id: "planer",   icon: <DollarSign size={15} />, label: "Planer" },
+    { id: "invalid",  icon: <Shield size={15} />,     label: "Invalidska i obiteljska" },
+    { id: "planer",   icon: <DollarSign size={15} />, label: "Koliko mi nedostaje" },
+    { id: "ukupno",   icon: <BarChart2 size={15} />,  label: "Samo I. ili I. + II." },
+    { id: "vodic",    icon: <Clock size={15} />,      label: "Vodič po dobi" },
+    { id: "edu",      icon: <BookOpen size={15} />,   label: "Osnove sustava" },
+    { id: "blog",     icon: <Star size={15} />,       label: "Blog" },
     { id: "svijet",   icon: <Users size={15} />,      label: "Svijet" },
-    { id: "vodic",    icon: <Clock size={15} />,      label: "Vodič" },
-    { id: "blog",     icon: <Star size={15} />,       label: "Blog i AI" },
-    { id: "scenariji",icon: <FileText size={15} />,   label: "Scenariji" },
+    { id: "scenariji",icon: <FileText size={15} />,   label: "Moji scenariji" },
   ];
+  const grupe = [
+    { id: "pocni", label: "Počni ovdje", tabs: ["pocni"] },
+    { id: "izracuni", label: "Izračuni", tabs: ["stup1", "stup2", "stup3", "invalid", "planer"] },
+    { id: "odluke", label: "Odluke pred mirovinu", tabs: ["ukupno", "vodic"] },
+    { id: "nauci", label: "Nauči", tabs: ["edu", "blog", "svijet"] },
+    { id: "scenariji", label: "Moji scenariji", tabs: ["scenariji"] },
+  ];
+  const aktivnaGrupa = grupe.find(g => g.tabs.includes(tab)) || grupe[0];
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
@@ -5206,28 +5378,30 @@ export default function App() {
       </button>
 
       {/* NAV */}
-      <nav style={{
+      <nav className="main-nav" style={{
         background: C.navy, color: "#fff", padding: "0 24px",
-        display: "flex", alignItems: "center", gap: 0,
+        display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap",
         boxShadow: "0 2px 16px rgba(0,0,0,0.18)", position: "sticky", top: 0, zIndex: 50,
-        height: 58,
+        minHeight: 58,
       }}>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#fff", marginRight: 32, whiteSpace: "nowrap" }}>
+        <button onClick={() => setTab("pocni")} style={{ background: "none", border: "none", fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#fff", marginRight: 24, whiteSpace: "nowrap", padding: "14px 0" }}>
           🏛 Mirovinski Sustav HR
-        </div>
-        <div style={{ display: "flex", gap: 2, flex: 1 }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              padding: "0 16px", height: 58, border: "none", background: "none",
-              color: tab === t.id ? C.goldL : "rgba(255,255,255,0.65)",
-              fontWeight: tab === t.id ? 700 : 400, fontSize: 13,
-              borderBottom: tab === t.id ? `2.5px solid ${C.gold}` : "2.5px solid transparent",
-              display: "flex", alignItems: "center", gap: 7,
-              transition: "all 0.15s", cursor: "pointer", whiteSpace: "nowrap",
-            }}>
-              {t.icon} {t.label}
-            </button>
-          ))}
+        </button>
+        <div style={{ display: "flex", gap: 2, flex: 1, flexWrap: "wrap" }}>
+          {grupe.map(g => {
+            const aktivna = g.id === aktivnaGrupa.id;
+            return (
+              <button key={g.id} className="grp-btn" onClick={() => setTab(g.tabs[0])} style={{
+                padding: "0 14px", height: 50, border: "none", background: "none",
+                color: aktivna ? C.goldL : "rgba(255,255,255,0.75)",
+                fontWeight: aktivna ? 700 : 500, fontSize: 13,
+                borderBottom: aktivna ? `2.5px solid ${C.gold}` : "2.5px solid transparent",
+                transition: "all 0.15s", cursor: "pointer", whiteSpace: "nowrap",
+              }}>
+                {g.label}
+              </button>
+            );
+          })}
         </div>
         {/* Right: guest or logged-in user */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
@@ -5258,8 +5432,25 @@ export default function App() {
         </div>
       </nav>
 
+      {aktivnaGrupa.tabs.length > 1 && (
+        <div className="sub-nav" style={{ background: C.white, borderBottom: `1px solid ${C.border}`, padding: "8px 24px", display: "flex", gap: 6, flexWrap: "wrap", position: "sticky", top: 58, zIndex: 40 }}>
+          {aktivnaGrupa.tabs.map(id => {
+            const t = tabs.find(x => x.id === id);
+            return (
+              <button key={id} onClick={() => setTab(id)} style={{
+                padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${tab === id ? C.navy : C.border}`,
+                background: tab === id ? C.navy : C.white, color: tab === id ? "#fff" : C.navy,
+                fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+              }}>
+                {t.icon} {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* AVM Banner */}
-      <div style={{ background: `linear-gradient(135deg, ${C.gold}cc, ${C.goldL}aa)`, padding: "8px 24px", fontSize: 12, color: C.navy, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="data-banner" style={{ background: `linear-gradient(135deg, ${C.gold}cc, ${C.goldL}aa)`, padding: "8px 24px", fontSize: 12, color: C.navy, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
         <strong>📊 Aktualni podaci (HZMO):</strong>
         <span>AVM od {AVM_DATUM} = <strong>{fmt(AVM)} EUR</strong></span>
         <span>|</span>
@@ -5280,6 +5471,7 @@ export default function App() {
 
       {/* CONTENT */}
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px 60px" }}>
+        {tab === "pocni" && <PocniOvdjeView onNavigate={setTab} />}
         {tab === "stup1" && <Stup1Calculator user={user} onAuthRequired={requireAuth} onSave={() => setScenariiRefresh(n => n + 1)} />}
         {tab === "stup2" && <Stup2Calculator user={user} onAuthRequired={requireAuth} onSave={() => setScenariiRefresh(n => n + 1)} />}
         {tab === "stup3" && <Stup3View user={user} onAuthRequired={requireAuth} />}
