@@ -632,20 +632,20 @@ Kada odete u mirovinu i izaberete kombiniranu isplatu (I. + II. stup), morate od
 ### 1. Pojedinačna mirovina
 Isplaćuje se dok ste živi. Prestaje vašom smrću — ostatak kapitala zadržava MOD. Daje **najviši** početni iznos.
 
-### 2. Pojedinačna s zajamčenim razdobljem (5–20 god.)
-Ako umrete unutar zajamčenog perioda, mirovina se isplaćuje imenovanom korisniku **do kraja perioda** (min. 50% vaše mirovine). Niži početni iznos.
+### 2. Pojedinačna sa zajamčenim razdobljem
+Ako umrete unutar zajamčenog razdoblja, mirovina se isplaćuje osobi koju ste imenovali **do kraja tog razdoblja**. Niži početni iznos.
 
 ### 3. Zajednička mirovina
-Nastavlja se isplaćivati bračnom drugu koji vas nadživi — **min. 60%** vaše mirovine. Dobar odabir za bračne parove.
+Nakon vaše smrti nastavlja se isplaćivati bračnom drugu doživotno (u ugovorenom iznosu). Dobar odabir za bračne parove.
 
 ### 4. Zajednička s zajamčenim razdobljem
 Kombinacija gore navedenog — maksimalna zaštita obitelji, ali najniži početni iznos.
 
 ## Jednokratna isplata do 20%
 
-Uvjet: osnovna mirovina iz I. stupa ≥ 115% najniže mirovine iz I. stupa.
+Uvjet: osnovna mirovina iz I. stupa veća od 115% najniže mirovine.
 
-Isplaćuje se bruto — MOD obračunava porez na dohodak. Preostali kapital (80%+) ide u doživotnu rentu.
+Preostali kapital (80%+) ide u doživotnu mirovinu. Što manje podignete jednokratno, to je doživotna mirovina viša.
 
 ## Koje opcije čuvaju kapital?
 
@@ -779,6 +779,7 @@ const css = `
     .main-nav, .sub-nav { position: static !important; padding: 0 12px !important; }
     .grp-btn { height: 40px !important; padding: 0 9px !important; font-size: 12px !important; }
     .data-banner { display: none !important; }
+    .edu-nav { position: static !important; }
   }
 `;
 
@@ -786,18 +787,48 @@ function Tooltip2({ text, children }) {
   const [show, setShow] = useState(false);
   return (
     <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
-      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}
+      onClick={(e) => { e.stopPropagation(); setShow(v => !v); }}>
       {children}
       {show && (
-        <span style={{
+        <span role="tooltip" style={{
           position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
           transform: "translateX(-50%)", background: C.navy, color: "#fff",
-          padding: "6px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "pre-wrap",
-          maxWidth: 240, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-          lineHeight: 1.5, pointerEvents: "none",
+          padding: "8px 11px", borderRadius: 8, fontSize: 12, fontWeight: 400, whiteSpace: "normal",
+          width: "max-content", maxWidth: 260, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          lineHeight: 1.5, textAlign: "left",
         }}>{text}</span>
       )}
     </span>
+  );
+}
+
+const POJMOVNIK = {
+  "staž": "Mirovinski staž: ukupno vrijeme u kojem ste radili i plaćali doprinose (uključuje i npr. rodiljni dopust, a majkama 12 mjeseci po djetetu).",
+  "PVB": "Prosječni vrijednosni bod: koliko ste u prosjeku zarađivali u odnosu na prosječnu plaću u Hrvatskoj. 1,0 = prosječna plaća, 1,5 = 50 % više od prosjeka.",
+  "AVM": `Aktualna vrijednost mirovine: iznos u eurima koji vrijedi jedan osobni bod. Od ${AVM_DATUM} iznosi ${fmt(AVM)} EUR. Usklađuje se 1.1. i 1.7.`,
+  "osobni bodovi": "PVB × godine staža × polazni faktor. Pomnoženi s AVM-om daju mirovinu.",
+  "PF": "Polazni faktor: ovisi o tome kada idete u mirovinu. 1,0 na vrijeme; −0,2 % za svaki mjesec ranije (do 70. godine); +0,45 % za svaki mjesec kasnije.",
+  "MF": "Mirovinski faktor: ovisi o vrsti mirovine. Starosna 1,0; invalidska 1,1 ili 0,9; obiteljska 0,77–1,1 prema broju članova.",
+  "najniža mirovina": `Zakonski minimum: ${fmt(AVM * MIN_MIROVINA_FAKTOR)} EUR za svaku godinu staža (106 % AVM-a).`,
+  "najviša mirovina": "Zakonski maksimum: mirovina kao da ste cijeli radni vijek zarađivali 3,8 prosječnih plaća.",
+  "dodatak 27 %": "Dodatak na mirovinu iz I. stupa. Pripada i mirovini samo iz I. stupa i osnovnoj mirovini kod mirovine iz oba stupa.",
+  "osnovna mirovina": "Mirovina iz I. stupa za osobe koje dobivaju mirovinu iz oba stupa. Dio za staž od 2002. računa se s faktorom oko 0,75 jer je 5 % doprinosa išlo u II. stup.",
+  "OMF": "Obvezni mirovinski fond (II. stup): fond u kojem se ulaže 5 % vaše bruto plaće na vaš osobni račun.",
+  "DMF": "Dobrovoljni mirovinski fond (III. stup): dobrovoljna štednja uz državni poticaj.",
+  "MOD": "Mirovinsko osiguravajuće društvo: od kapitala iz II. stupa isplaćuje vam doživotnu mirovinu. U Hrvatskoj posluju dva.",
+  "REGOS": "Središnji registar osiguranika: vodi vaš osobni račun u II. stupu i raspoređuje vas u fond.",
+  "DPS": "Državna poticajna sredstva: država dodaje 15 % vaše godišnje uplate u III. stup, najviše 99,54 EUR godišnje.",
+  "renta": "Doživotna mirovina iz kapitala (II. ili III. stup) koju isplaćuje MOD.",
+  "Hanfa": "Hrvatska agencija za nadzor financijskih usluga: nadzire mirovinske fondove i MOD-ove.",
+  "HZMO": "Hrvatski zavod za mirovinsko osiguranje: isplaćuje mirovine iz I. stupa i rješava zahtjeve za mirovinu.",
+};
+
+function Pojam({ k, children }) {
+  return (
+    <Tooltip2 text={POJMOVNIK[k] || k}>
+      <span style={{ borderBottom: `1.5px dotted ${C.gold}`, cursor: "help" }}>{children || k}</span>
+    </Tooltip2>
   );
 }
 
@@ -1415,9 +1446,16 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>I. mirovinski stup</h2>
         <p style={{ color: C.slateL, fontSize: 13 }}>
-          Generacijska solidarnost — sadašnji radnici financiraju sadašnje umirovljenike
+          Državna mirovina (HZMO) — sadašnji radnici financiraju sadašnje umirovljenike
         </p>
       </div>
+
+      <Ukratko color={C.navy}>
+        Mirovina iz I. stupa ovisi o tri stvari: koliko dugo ste radili (<Pojam k="staž" />), koliko ste zarađivali u odnosu na
+        prosjek (<Pojam k="PVB" />) i kada odlazite u mirovinu (<Pojam k="PF" />). Umnožak se množi s <Pojam k="AVM" /> ({fmt(AVM)} EUR)
+        i uvećava za <Pojam k="dodatak 27 %" />. Primjer: prosječna plaća i 40 godina staža daju oko {fmt(saDodatkom(calcStup1({ pvb: 1, staz: 40, pf: 1, mf: 1 })).ukupno, 0)} EUR bruto.
+        Ako ste u II. stupu, pogledajte i usporedbu „Samo I. ili I. + II.“.
+      </Ukratko>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         {/* Left: rich human-friendly params */}
@@ -1712,8 +1750,8 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
       </div>
 
       {/* Formula box */}
-      <Card style={{ marginTop: 20, background: C.navy, color: "#fff" }}>
-        <h3 style={{ fontSize: 14, marginBottom: 12, color: C.goldL }}>📐 Formule (ZOMO) — s vašim vrijednostima</h3>
+      <Detalji naslov="📐 Formule (ZOMO) s vašim vrijednostima" style={{ marginTop: 20 }}>
+      <Card style={{ background: C.navy, color: "#fff" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
             ["Osobni bodovi", `OB = ${params.pvb.toFixed(2)} × ${params.staz} × ${pf.toFixed(3)} = ${res.ob.toFixed(3)}`],
@@ -1727,6 +1765,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
           ))}
         </div>
       </Card>
+      </Detalji>
     </div>
   );
 }
@@ -1874,9 +1913,15 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>II. mirovinski stup</h2>
         <p style={{ color: C.slateL, fontSize: 13 }}>
-          Individualna kapitalizirana štednja · 5% bruto plaće · MOD
+          Vaša osobna štednja u mirovinskom fondu · 5 % bruto plaće
         </p>
       </div>
+
+      <Ukratko color={C.purple}>
+        Od bruto plaće 5 % ide na vaš osobni račun u <Pojam k="OMF">obveznom mirovinskom fondu</Pojam>, gdje se ulaže i raste.
+        Pri umirovljenju taj novac prelazi u <Pojam k="MOD" />, koji vam isplaćuje doživotnu mirovinu, a do 20 % možete podići
+        jednokratno. Tri odluke su važne: kategorija fonda dok štedite, „samo I. ili I. + II.“ pri umirovljenju i vrsta mirovine u MOD-u.
+      </Ukratko>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
@@ -2894,7 +2939,7 @@ function SP500MirovinaBlog() {
                 ["Devizni rizik", "S&P 500 je u USD. Tečaj EUR/USD može bitno promijeniti realnu vrijednost za hr. umirovljenika."],
                 ["Invalidska i obiteljska zaštita", "HR sustav pruža invalidsku i obiteljsku mirovinu. Privatna štednja ne garantira ovaj 'osigurani' dio."],
                 ["Zajamčena doživotna isplata", "Doživotna renta iz MOD-a isplaćuje se bez obzira koliko dugo živite. Privatni kapital se troši i može nestati."],
-                ["Porezi i troškovi", "Prinosi na investicije podliježu porezima (10% u HR). OMF naknade već oduzete od prinosa. Brokeri naplaćuju provizije."],
+                ["Porezi i troškovi", "Kapitalni dobici i dividende u HR oporezuju se s 12 % (dobit od dionica nakon 2 godine držanja ne oporezuje se). OMF naknade već oduzete od prinosa. Brokeri naplaćuju provizije."],
                 ["Behavioralni rizici", "Studije pokazuju da prosječni investitor ostvaruje 4-5% lošiji prinos od indeksa zbog loše alokacije (buy high, sell low)."],
               ].map(([t,d],i) => (
                 <div key={i} style={{ marginBottom: 10, paddingBottom: 10,
@@ -3015,7 +3060,9 @@ function BlogView() {
       </div>
 
       {/* ── S&P 500 vs HR mirovinski sustav ── */}
-      <SP500MirovinaBlog />
+      <Detalji naslov="📈 Misaoni eksperiment: što da 20 % plaće ide u S&P 500? (za znatiželjne)" style={{ marginBottom: 24 }}>
+        <SP500MirovinaBlog />
+      </Detalji>
 
     </div>
   );
@@ -3128,8 +3175,8 @@ function EduView() {
     { id: "pf",      label: "⏩ Polazni faktor" },
     { id: "avm",     label: "📊 AVM" },
     { id: "stup2",   label: "🏦 II. stup" },
-    { id: "prava",   label: "⚖️ Prava osiguranika" },
-    { id: "reforma", label: "🔄 Reforma sustava" },
+    { id: "prava",   label: "⚖️ Odlazak u mirovinu" },
+    { id: "reforma", label: "🔄 Budućnost sustava" },
   ];
 
   const scrollTo = (id) => {
@@ -3143,7 +3190,7 @@ function EduView() {
     <div className="fadeIn">
 
       {/* Horizontal nav, centered */}
-      <div style={{ position: "sticky", top: 80, zIndex: 5, display: "flex", justifyContent: "center",
+      <div className="edu-nav" style={{ position: "sticky", top: 112, zIndex: 5, display: "flex", justifyContent: "center",
         flexWrap: "wrap", gap: 6, background: C.white, borderRadius: 14,
         border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 24,
         boxShadow: "0 2px 12px rgba(26,46,82,0.07)" }}>
@@ -3162,47 +3209,22 @@ function EduView() {
       <div>
         {/* Hero */}
         <div style={{ background: `linear-gradient(135deg, ${C.navy}, #2a4080)`, borderRadius: 16,
-          padding: "32px 36px", marginBottom: 36, color: "#fff", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", right: -20, top: -20, fontSize: 120, opacity: 0.06 }}>🏛</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase",
-            letterSpacing: "0.1em", marginBottom: 8 }}>Edukacijski centar</div>
-          <h1 style={{ fontSize: 28, marginBottom: 14, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-            Vaša mirovina se gradi danas — ne kad odete u mirovinu.
-          </h1>
-          <p style={{ fontSize: 17, fontWeight: 700, color: "rgba(255,255,255,0.95)", lineHeight: 1.6, maxWidth: 640, marginBottom: 14 }}>
-            Većina ljudi ne razmišlja o mirovini dok je ne počne primati. To je kasno
-            — previše kasno da se išta promijeni.
+          padding: "26px 30px", marginBottom: 30, color: "#fff" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Osnove sustava</div>
+          <h1 style={{ fontSize: 26, marginBottom: 10, lineHeight: 1.25 }}>Mirovina se gradi tijekom cijelog radnog vijeka.</h1>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", lineHeight: 1.7, maxWidth: 680 }}>
+            Ovdje su objašnjeni pojmovi o kojima ovisi vaša mirovina: staž, plaća u odnosu na prosjek (PVB), dob odlaska (PF) i
+            vrijednost boda (AVM), te kako funkcioniraju II. stup, isplata i porez. Svaki dio ima primjer s brojevima koje možete mijenjati.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 640 }}>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
-              Svaka godina rada ostavlja trag u vašem mirovinskom dosjeu. Svaki postotak
-              plaće, svaki valorizirani bod, svaki mjesec staža — sve se zbraja ili
-              oduzima od iznosa koji ćete primati do kraja života.
-            </p>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
-              Razlika između osobe koja razumije sustav i one koja ga ne razumije
-              može biti i nekoliko stotina eura mirovine svaki mjesec — zauvijek.
-            </p>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
-              Ovdje ćete naučiti što je PVB i zašto pregovaranje o plaći danas izravno
-              povećava vašu mirovinu za 30 godina. Zašto jedan jedini mjesec ranijeg
-              odlaska u mirovinu trajno smanjuje svaki vaš budući ček. Zašto 55 eura
-              mjesečno u trećem stupu može biti vrijednije od iznosa koji u njega ulažete.
-            </p>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", lineHeight: 1.7 }}>
-              Nijedan od ovih podataka nije skriven — ali nitko vam ih nije objasnio
-              jasno, s konkretnim brojevima i vašim primjerom. Do sad.
-            </p>
-          </div>
         </div>
 
         {/* ── PREGLED SUSTAVA ─────────────────────────────────────────── */}
         <EduSection id="pregled" emoji="🗺" title="Pregled mirovinskog sustava" color={C.navy}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 24 }}>
             {[
-              { n: "I. stup", emoji: "🏛", boja: C.navy, opis: "Generacijska solidarnost", detalj: "15% bruto plaće ide u državni fond. Sadašnji radnici financiraju sadašnje umirovljenike. Mirovina se izračunava formulom: PVB × Staž × PF × MF × AVM.", tag: "OBVEZNO · HZMO" },
+              { n: "I. stup", emoji: "🏛", boja: C.navy, opis: "Generacijska solidarnost", detalj: "15 % bruto plaće (20 % ako niste u II. stupu) ide u državni mirovinski sustav. Sadašnji radnici financiraju sadašnje umirovljenike. Mirovina = PVB × staž × PF × MF × AVM, uz dodatak 27 %.", tag: "OBVEZNO · HZMO" },
               { n: "II. stup", emoji: "🏦", boja: C.purple, opis: "Individualna kapitalizirana štednja", detalj: "5% bruto plaće ide na vaš osobni račun u OMF-u. Tamo se ulaže i raste s tržišnim prinosima. Vaša osobna imovina.", tag: "OBVEZNO · REGOS / MOD" },
-              { n: "III. stup", emoji: "🌱", boja: C.green, opis: "Dobrovoljna mirovinska štednja", detalj: "Vlastite uplate u dobrovoljni mirovinski fond. Država potiče s DPS-om do 99,54 EUR/god. Potpuna fleksibilnost.", tag: "DOBROVOLJNO" },
+              { n: "III. stup", emoji: "🌱", boja: C.green, opis: "Dobrovoljna mirovinska štednja", detalj: "Vlastite uplate (i uplate poslodavca) u dobrovoljni mirovinski fond. Država dodaje 15 %, do 99,54 EUR godišnje. Dostupno od 55. godine.", tag: "DOBROVOLJNO" },
             ].map(s => (
               <div key={s.n} style={{ borderRadius: 14, border: `2px solid ${s.boja}22`,
                 background: s.boja + "08", padding: 18, position: "relative" }}>
@@ -3245,14 +3267,14 @@ function EduView() {
             <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,0.07)", borderRadius: 8 }}>
               <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>S vašim parametrima: </span>
               <span className="mono" style={{ fontSize: 12, color: "#7bffb0" }}>
-                M = {pvb.toFixed(2)} × {staz} × {pf_std.toFixed(3)} × 1.00 × {AVM} = <strong>{fmt(mirovina_std)} EUR</strong>
+                M = {pvb.toFixed(2)} × {staz} × {pf_std.toFixed(3)} × 1,00 × {fmt(AVM)} = <strong>{fmt(mirovina_std)} EUR</strong> (+ dodatak 27 %)
               </span>
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
               * MF (mirovinski faktor) ovisi o vrsti mirovine: <strong style={{ color: "#fff" }}>1,00</strong> za
               starosnu i prijevremenu mirovinu, <strong style={{ color: "#fff" }}>1,10</strong> za potpunu
-              invalidsku i <strong style={{ color: "#fff" }}>0,90</strong> za djelomičnu invalidsku mirovinu
-              (od 1.1.2026., ZOMO čl. 48.).
+              invalidsku i <strong style={{ color: "#fff" }}>0,90</strong> za djelomičnu invalidsku mirovinu (od 1.1.2026.),
+              a za obiteljsku 0,77 do 1,1 prema broju članova obitelji (ZOMO čl. 85.).
             </div>
           </Card>
         </EduSection>
@@ -3611,8 +3633,446 @@ function EduView() {
           </div>
         </EduSection>
 
+        {/* ── PRAVA OSIGURANIKA ─────────────────────────────────────── */}
+        <EduSection id="prava" emoji="⚖️" title="Odlazak u mirovinu: izbori, isplata i porez" color={C.blue}>
+
+          <Detalji naslov="Tko je tko u II. stupu (REGOS, fond, MOD, Hanfa)" style={{ marginBottom: 18 }}>
+          {/* Hero pojašnjenje */}
+          <div style={{ background: `linear-gradient(135deg, #0f2040, #1a3566)`, borderRadius: 14,
+            padding: "24px 28px", marginBottom: 22, color: "#fff" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase",
+              letterSpacing: "0.08em", marginBottom: 10 }}>Ključna razlika od I. stupa</div>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.88)", lineHeight: 1.8, maxWidth: 640 }}>
+              Sredstva u II. stupu su <strong style={{ color: "#7bffb0" }}>vaša osobna imovina</strong> —
+              ne idu u zajednički državni fond, nego na vaš individualni račun koji se vodi u
+              Središnjem registru osiguranika (<strong style={{ color: C.goldL }}>REGOS</strong>).
+              Ni Vlada ni HZMO ne mogu ih koristiti za isplatu tuđih mirovina.
+            </p>
+            <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
+              {[
+                { emoji: "🔒", label: "Osobna imovina", sub: "Ne može se oduzeti, blokirati ni koristiti za tuđe potrebe" },
+                { emoji: "📋", label: "Neotuđiva", sub: "Ne možete je prodati, zamijeniti ni prenijeti trećima" },
+                { emoji: "👨‍👩‍👧", label: "Nasljedna*", sub: "Uz zakonske uvjete (detalji niže)" },
+                { emoji: "🔍", label: "Transparentna", sub: "Stanje računa vidljivo u REGOS portalu i e-Građani" },
+              ].map(it => (
+                <div key={it.emoji} style={{ background: "rgba(255,255,255,0.09)", borderRadius: 10,
+                  padding: "10px 14px", flex: "1 1 160px" }}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{it.emoji}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#7fbcff", marginBottom: 3 }}>{it.label}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>{it.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tko su akteri — vizualni flow */}
+          <Card style={{ marginBottom: 18 }}>
+            <h3 style={{ fontSize: 14, marginBottom: 16, color: C.navy }}>Tko čini sustav II. stupa i koja je uloga svakog aktera?</h3>
+            <div style={{ display: "flex", alignItems: "stretch", gap: 0, overflowX: "auto" }}>
+              {[
+                { emoji: "👷", naziv: "Vi (Osiguranik)", boja: C.blue,
+                  opis: "Vlasnik sredstava. Platite 5% bruto — poslodavac to uplaćuje u vaše ime. Vi birate fond i kategoriju.",
+                  obveze: ["Odaberite OMF pri zaposlenju", "Pratite stanje na e-Građani / REGOS portalu", "Pri umirovljenju odaberite MOD"] },
+                { emoji: "🏛", naziv: "REGOS", boja: C.navy,
+                  opis: "Središnji registar osiguranika. Vodi evidenciju svih osobnih računa, prima uplate od HZMO-a i raspoređuje ih u fondove.",
+                  obveze: ["Vodi vaš osobni račun", "Rasporedit će vas u fond kategorije B ako ne odaberete", "Prebacuje sredstva MOD-u pri umirovljenju"] },
+                { emoji: "📈", naziv: "Mirovinsko društvo (OMF)", boja: C.purple,
+                  opis: "Profesionalni upravitelj fonda. Ulaže vaša sredstva u financijske instrumente. Pod nadzorom HANFA-e.",
+                  obveze: ["Ulaže novac prema strategiji fonda", "Naplaćuje naknadu za upravljanje (0,23 % god. u 2026.)", "Pod nadzorom je Hanfe"] },
+                { emoji: "🏦", naziv: "MOD", boja: C.green,
+                  opis: "Mirovinsko osiguravajuće društvo. Od vaših akumuliranih sredstava formira i isplaćuje doživotnu rentu.",
+                  obveze: ["Sklapa ugovor o mirovini s vama", "Isplaćuje doživotnu rentu", "Preuzima dugovječnosni rizik"] },
+                { emoji: "🔍", naziv: "HANFA", boja: C.gold,
+                  opis: "Regulator i nadzornik. Kontrolira zakonitost poslovanja svih mirovinskih društava i MOD-ova.",
+                  obveze: ["Nadzire OMF i MOD", "Propisuje limite ulaganja", "Provodi inspekcije i kazne"] },
+              ].map((a, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "stretch", flex: "none" }}>
+                  <div style={{ width: 190, padding: "14px 14px", background: a.boja + "0a",
+                    border: `1.5px solid ${a.boja}22`, borderRadius: 10, margin: "0 4px" }}>
+                    <div style={{ fontSize: 24, marginBottom: 6 }}>{a.emoji}</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: a.boja, marginBottom: 6 }}>{a.naziv}</div>
+                    <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5, marginBottom: 10 }}>{a.opis}</div>
+                    <div style={{ fontSize: 10, color: C.slateL, fontWeight: 600, marginBottom: 4 }}>ZADUŽENJA:</div>
+                    {a.obveze.map((o, j) => (
+                      <div key={j} style={{ fontSize: 10, color: C.slate, lineHeight: 1.4,
+                        padding: "3px 0", borderBottom: j < a.obveze.length-1 ? `1px solid ${C.border}` : "none" }}>
+                        › {o}
+                      </div>
+                    ))}
+                  </div>
+                  {i < 4 && (
+                    <div style={{ display: "flex", alignItems: "center", color: C.slateL,
+                      fontSize: 18, padding: "0 2px", flexShrink: 0 }}>→</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          </Detalji>
+
+          <Detalji naslov="MOD-ovi i kategorije fondova (A, B, C)" style={{ marginBottom: 18 }}>
+          {/* MOD detaljno */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }}>
+            <Card style={{ borderLeft: `4px solid ${C.green}` }}>
+              <h3 style={{ fontSize: 14, color: C.green, marginBottom: 14 }}>🏦 Što je MOD i kako upravlja vašim novcem?</h3>
+              <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
+                <strong>MOD (Mirovinsko osiguravajuće društvo)</strong> je privatna financijska institucija
+                koja od vaših akumuliranih sredstava u OMF-u formira doživotnu mirovinu.
+                U Hrvatskoj trenutno posluju <strong>dva MOD-a</strong> (registar Hanfe, 2026.):
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                {[
+                  { n: "Hrvatsko mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
+                  { n: "Raiffeisen mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
+                ].map(m => (
+                  <div key={m.n} style={{ display: "flex", justifyContent: "space-between",
+                    padding: "5px 10px", background: C.greenL, borderRadius: 7, fontSize: 11 }}>
+                    <strong style={{ color: C.navy }}>{m.n}</strong>
+                    <span style={{ color: C.slateL }}>{m.v}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.7 }}>
+                <p style={{ marginBottom: 8 }}>
+                  <strong>Kako MOD izračunava rentu?</strong> Aktuarskim modelom uzima u obzir:
+                </p>
+                <ul style={{ paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <li>Vaš akumulirani kapital iz OMF-a</li>
+                  <li>Spol i dob pri umirovljenju (aktuarski tablice)</li>
+                  <li>Odabranu vrstu mirovine (doživotna, zajednička, zajamčeno razdoblje)</li>
+                  <li>Naknadu MOD-a (zakonom ograničena)</li>
+                </ul>
+                <div style={{ marginTop: 10, padding: "8px 10px", background: C.amberL,
+                  borderRadius: 7, fontSize: 11, color: C.amber }}>
+                  ⚠ MOD preuzima <strong>dugovječnosni rizik</strong> — obvezan je isplaćivati rentu
+                  bez obzira koliko dugo živite. Mjesečni iznos zato ovisi o očekivanom trajanju života i kamatama.
+                </div>
+              </div>
+            </Card>
+
+            <Card style={{ borderLeft: `4px solid ${C.purple}` }}>
+              <h3 style={{ fontSize: 14, color: C.purple, marginBottom: 14 }}>📈 Kategorije OMF fondova (A, B, C)</h3>
+              <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
+                Svako mirovinsko društvo upravlja s <strong>tri kategorije fonda</strong> različitog rizika.
+                Ako sami ne izaberete, REGOS vas raspoređuje u kategoriju B.
+              </p>
+              {[
+                { kat: "A", boja: C.green, profil: "Agresivni rast",
+                  dionice: "najviše dionica", za: "Više od 10 god. do mirovine",
+                  opis: "Najviši očekivani prinos dugoročno, ali i najveće oscilacije. Kad do mirovine ostane manje od 10 godina, REGOS vas prebacuje u B (na zahtjev možete ostati u A do 5 godina prije mirovine)." },
+                { kat: "B", boja: C.blue, profil: "Umjereni rast",
+                  dionice: "umjereno dionica", za: "Zadana kategorija",
+                  opis: "Ravnoteža rasta i sigurnosti. U nju se raspoređuju svi koji ne izaberu kategoriju." },
+                { kat: "C", boja: C.slate, profil: "Konzervativni",
+                  dionice: "malo ili bez dionica", za: "Zadnjih 5 god. do mirovine",
+                  opis: "Naglasak na zaštiti kapitala: niži prinos, niži rizik gubitka. Namijenjen je osiguranicima kojima je do mirovine manje od 5 godina." },
+              ].map(f => (
+                <div key={f.kat} style={{ marginBottom: 10, padding: "10px 12px",
+                  background: f.boja + "0a", border: `1px solid ${f.boja}22`, borderRadius: 9 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: f.boja,
+                        background: f.boja+"18", padding: "1px 8px", borderRadius: 6 }}>Kat. {f.kat}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{f.profil}</span>
+                    </div>
+                    <span style={{ fontSize: 10, color: f.boja, fontWeight: 600 }}>{f.dionice}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.slateL, marginBottom: 3 }}>📍 {f.za}</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>{f.opis}</div>
+                </div>
+              ))}
+              <div style={{ fontSize: 11, color: C.slateL, marginTop: 6 }}>
+                Fond i kategoriju možete promijeniti preko REGOS-a (FINA ili e-Građani). Točna pravila i rokove provjerite na regos.hr.
+              </div>
+            </Card>
+          </div>
+
+          </Detalji>
+
+          {/* Oporezivanje mirovina */}
+          <Card style={{ marginBottom: 18, border: `2px solid ${C.gold}33` }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 14 }}>💶 Oporezivanje mirovina — što ostaje na računu</h3>
+            <div style={{ padding: "10px 14px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}55`, marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 4 }}>⏳ Od 1.1.2027. porez na mirovine trebao bi se ukinuti</div>
+              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
+                Vlada je u rujnu 2026. uputila Saboru izmjene Zakona o porezu na dohodak: umanjenje poreza za umirovljenike raste s 50 %
+                na 100 % za dio mirovine oporeziv nižom stopom (do 5.000 EUR osnovice). Ako ih Sabor usvoji, većina umirovljenika od 2027. neće plaćati porez.
+                Do tada vrijede pravila u nastavku.
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Kako se obračunava porez</div>
+                <ol style={{ fontSize: 12, color: C.slate, lineHeight: 1.8, paddingLeft: 16, margin: 0 }}>
+                  <li>Porezna osnovica = mirovina − <strong>{OSOBNI_ODBITAK} EUR</strong> (osobni odbitak/mj.)</li>
+                  <li>Porez po stopi vašeg grada ili općine: niža stopa 15–23 % (najčešće 20 %) do 5.000 EUR osnovice, viša 25–33 % iznad</li>
+                  <li>Umirovljenici plaćaju <strong>pola</strong> obračunatog poreza (umanjenje 50 %)</li>
+                  <li>Prirez ne postoji od 2024. (uključen je u stope gradova)</li>
+                </ol>
+              </div>
+              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Primjeri neto mirovine</div>
+                {[600, 900, 1200, 1800].map(b => {
+                  const t = calcNetoMirovina(b);
+                  return (
+                    <div key={b} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, borderBottom: `1px solid ${C.border}`, padding: "4px 0" }}>
+                      <span style={{ color: C.slateL }}>{b} EUR bruto</span>
+                      <span style={{ fontWeight: 700, color: C.green }}>≈ {fmt(t.neto)} EUR neto</span>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10, color: C.slateL, marginTop: 6 }}>Stopa 20 % · osobni odbitak {OSOBNI_ODBITAK} EUR · 2026.</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.slateL, lineHeight: 1.6 }}>
+              Mirovine ≤ {OSOBNI_ODBITAK} EUR/mj. ne plaćaju porez. Osobni odbitak može biti veći uz uzdržavane članove ili invaliditet.
+              Točan obračun radi HZMO i isplaćuje neto iznos. Godišnji obračun (porezna prijava) nije obveza za umirovljenike s jednim izvorom dohotka.
+            </div>
+          </Card>
+
+          {/* Timeline isplate */}
+          <Card style={{ marginBottom: 18 }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 18 }}>📋 Kad i kako se isplaćuju sredstva — korak po korak</h3>
+            <div style={{ position: "relative", paddingLeft: 32 }}>
+              {/* Vertical line */}
+              <div style={{ position: "absolute", left: 10, top: 8, bottom: 8,
+                width: 2, background: `linear-gradient(${C.navy}, ${C.green})`, borderRadius: 1 }} />
+              {[
+                { n: "1", boja: C.navy, naslov: "Ostvarivanje prava na mirovinu", emoji: "📝",
+                  opis: "Podnosite zahtjev HZMO-u za starosnu ili prijevremenu mirovinu. HZMO izdaje Rješenje o mirovini i šalje podatke REGOS-u.",
+                  detalj: null },
+                { n: "2", boja: C.navy, naslov: "Odluka: kombinirana ili samo I. stup?", emoji: "⚖️",
+                  opis: "Birate mirovinu SAMO iz I. stupa (računa se kao da nikad niste bili u II. stupu, uz dodatak 27 %; sredstva II. stupa idu u državni proračun) ili mirovinu iz I. + II. stupa.",
+                  detalj: "Od 2019. ovaj izbor ima svatko tko je u oba stupa. Prije odluke dobivate informativni izračun obje mogućnosti." },
+                { n: "3", boja: C.blue, naslov: "Odabir MOD-a (za kombiniranu)", emoji: "🏦",
+                  opis: "Nakon obavijesti REGOS-a birate MOD u FINA-i, Mirovinskom informativnom centru ili putem e-Građana. Ako ne odaberete u roku, REGOS vas raspoređuje po službenoj dužnosti.",
+                  detalj: "Trenutno posluju dva MOD-a. Usporedite ponuđene iznose za istu vrstu mirovine." },
+                { n: "4", boja: C.blue, naslov: "Jednokratna isplata do 20% (opcija)", emoji: "💵",
+                  opis: "Možete zatražiti jednokratnu isplatu do 20 % kapitala prije početka doživotne mirovine. Uvjet: osnovna mirovina iz I. stupa mora biti veća od 115 % najniže mirovine.",
+                  detalj: null },
+                { n: "5", boja: C.purple, naslov: "Ugovor o mirovini s MOD-om", emoji: "📄",
+                  opis: "MOD i vi potpisujete Ugovor o mirovini. U njemu se određuje: vrsta mirovine, iznos rente, uvjeti usklađivanja, eventualno zajamčeno razdoblje i ime korisnika.",
+                  detalj: "Jednom sklopljeni ugovor nije moguće promijeniti. Zato je izbor vrste mirovine iznimno važna i TRAJNA odluka." },
+                { n: "6", boja: C.green, naslov: "Isplata doživotne rente", emoji: "💰",
+                  opis: "Mirovina iz II. stupa isplaćuje se svaki mjesec dok ste živi, bez obzira na duljinu života. Način usklađivanja s inflacijom navodi se u ugovoru.",
+                  detalj: null },
+              ].map((k, i) => (
+                <div key={i} style={{ display: "flex", gap: 16, marginBottom: 18, position: "relative" }}>
+                  <div style={{ position: "absolute", left: -28, top: 2, width: 20, height: 20,
+                    borderRadius: "50%", background: k.boja, color: "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 800, flexShrink: 0, zIndex: 1 }}>{k.n}</div>
+                  <div style={{ background: k.boja + "08", border: `1px solid ${k.boja}22`,
+                    borderRadius: 10, padding: "12px 14px", flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 16 }}>{k.emoji}</span>
+                      <strong style={{ fontSize: 13, color: C.navy }}>{k.naslov}</strong>
+                    </div>
+                    <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6, marginBottom: k.detalj ? 6 : 0 }}>
+                      {k.opis}
+                    </p>
+                    {k.detalj && (
+                      <div style={{ fontSize: 11, color: C.slateL, background: C.bg,
+                        borderRadius: 7, padding: "6px 10px", lineHeight: 1.5 }}>
+                        💡 {k.detalj}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Izbor: samo I. stup ili I. + II. */}
+          <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.navy}` }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 10 }}>🔁 Izbor pri umirovljenju: samo I. stup ili I. + II. stup</h3>
+            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
+              <li><strong>Tko bira:</strong> od 1.1.2019. svatko tko je u oba stupa, u postupku ostvarivanja starosne ili prijevremene
+                starosne mirovine. Nije bitno kako ste ušli u II. stup.</li>
+              <li><strong>Samo I. stup:</strong> mirovina se računa kao da ste uvijek bili samo u I. stupu, uz dodatak od 27 %.
+                Sredstva s računa u II. stupu prenose se u državni proračun.</li>
+              <li><strong>I. + II. stup:</strong> osnovna mirovina iz I. stupa (staž od 2002. računa se s faktorom oko 0,75) uz dodatak od
+                27 %, plus doživotna mirovina iz II. stupa preko MOD-a. Moguće samo ako je osnovna mirovina veća od najniže.</li>
+              <li><strong>Kako odlučiti:</strong> HZMO i REGOS prije odluke šalju informativni izračun obje mogućnosti. Izaberite onu s
+                većim ukupnim iznosom; ako je razlika mala, razmislite i o vrsti mirovine u MOD-u (npr. obiteljskoj).</li>
+              <li><strong>Odluka je trajna.</strong> Izjava se daje u Mirovinskom informativnom centru, u FINA-i ili putem e-usluge „Odabir mirovine“.</li>
+            </ul>
+            <div style={{ marginTop: 10, fontSize: 12, color: C.purple, fontWeight: 600 }}>
+              → Okvirnu usporedbu za svoje podatke napravite u kalkulatoru „Samo I. ili I. + II.“ (izbornik Odluke pred mirovinu).
+            </div>
+          </Card>
+
+          <Detalji naslov="Nasljeđivanje sredstava II. stupa — detaljno" style={{ marginBottom: 18 }}>
+          {/* Nasljeđivanje — centralni prikaz */}
+          <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.gold}` }}>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 6 }}>👨‍👩‍👧 Nasljeđivanje sredstava II. stupa — što zakon zaista kaže</h3>
+            <p style={{ fontSize: 12, color: C.slateL, marginBottom: 16, lineHeight: 1.6 }}>
+              Zakon o obveznim mirovinskim fondovima, čl. 103. st. 1. (NN 19/14, 93/15, 64/18, 115/18, 58/20)
+            </p>
+
+            {/* Flowchart nasljeđivanja */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 8,
+              alignItems: "center", marginBottom: 20 }}>
+              {/* Slučaj 1: smrt prije umirovljenja */}
+              <div style={{ background: C.navy + "0a", border: `1.5px solid ${C.navy}22`,
+                borderRadius: 10, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>💀</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 6 }}>
+                  Smrt PRIJE umirovljenja
+                </div>
+                <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.5 }}>
+                  Cijeli akumulirani kapital na osobnom računu u OMF-u
+                </div>
+              </div>
+
+              <div style={{ fontSize: 18, color: C.slateL, textAlign: "center" }}>→</div>
+
+              <div>
+                <div style={{ background: C.greenL, border: `1.5px solid ${C.green}33`,
+                  borderRadius: 10, padding: 12, marginBottom: 8, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 4 }}>
+                    ✅ Ako NEMA korisnika obiteljske mirovine (ZOMO)
+                  </div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Sredstva su <strong>predmet nasljeđivanja</strong> prema Zakonu o nasljeđivanju.
+                    Nasljednici (fizičke ili pravne osobe) podnose pravomoćno Rješenje o nasljeđivanju.
+                  </div>
+                </div>
+                <div style={{ background: C.amberL, border: `1.5px solid ${C.gold}33`,
+                  borderRadius: 10, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.amber, marginBottom: 4 }}>
+                    ⚠ Ako IMA korisnika obiteljske mirovine (ZOMO)
+                  </div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Član obitelji bira: <strong>naslijediti sredstva</strong> (tada se dio obiteljske mirovine za staž od 2002.
+                    određuje kao osnovna mirovina) ili prenijeti ih u državni proračun i dobiti <strong>punu obiteljsku mirovinu</strong> iz I. stupa.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 18, color: C.slateL, textAlign: "center" }}>→</div>
+
+              <div style={{ background: C.blueL, border: `1.5px solid ${C.blue}22`,
+                borderRadius: 10, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>📄</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 6 }}>Postupak isplate nasljednicima</div>
+                <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.5, textAlign: "left" }}>
+                  1. Pravomoćno Rješenje o nasljeđivanju<br/>
+                  2. Original ili ovjeren original<br/>
+                  3. Zahtjev REGOS-u / FINA-i<br/>
+                  4. Isplata na račun nasljednika<br/>
+                  <span style={{ color: C.slateL, marginTop: 4, display: "block" }}>
+                    Nasljednici mogu biti i pravne osobe, udruge, JLS (grad, općina) — ako se zakonski nasljednici odriču nasljedstva.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Smrt nakon umirovljenja */}
+            <div style={{ background: C.redL, border: `1.5px solid ${C.red}22`,
+              borderRadius: 10, padding: 16, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 8 }}>
+                ⚠ Smrt NAKON umirovljenja (u tijeku isplate rente)
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Bez zajamčenog razdoblja</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Renta prestaje smrću. Preostali neisplaćeni kapital ostaje MOD-u.
+                    Nasljednici ne dobivaju ništa.
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 4 }}>Sa zajamčenim razdobljem</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Smrt unutar zajamčenog perioda → renta se nastavlja isplaćivati
+                    <strong> imenovanom korisniku</strong> (min. 50% vaše rente) do kraja zajamčenog roka.
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 4 }}>Zajednička mirovina (bračni par)</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Smrću jednog bračnog druga, nadživjeli bračni drug nastavlja primati
+                    <strong> min. 60%</strong> prvobitne rente do kraja života.
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 4 }}>Zajednička + zajamčeno razdoblje</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
+                    Kombinacija — najniži početni iznos rente, ali
+                    <strong> maksimalna zaštita</strong> i bračnog druga i imenovanog korisnika.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "10px 14px", background: C.purpleL, borderRadius: 9,
+              fontSize: 11, color: C.purple, lineHeight: 1.6 }}>
+              💡 <strong>Praktični savjet:</strong> Vrstu mirovine odabirete jednom pri sklapanju ugovora s MOD-om
+              — ta odluka je <strong>nepromjenjiva</strong>. Razgovarajte s partnerom i savjetnikom
+              prije odabira. Ako imate ovisne članove obitelji, razmatrajte zajedničku mirovinu ili zajamčeno razdoblje,
+              iako će početna renta biti niža.
+            </div>
+          </Card>
+
+          </Detalji>
+
+          <Detalji naslov="Pregled svih prava u II. stupu">
+          {/* Prava i zaštite — tablični prikaz */}
+          <Card>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 16 }}>✅ Sva vaša prava u II. stupu — pregled</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {[
+                { pravo: "Pravo na uvid u stanje računa",
+                  kako: "e-Građani portal, REGOS web, godišnji izviještaj poštom",
+                  izvor: "ZOMF čl. 70." },
+                { pravo: "Pravo izbora i promjene fonda i kategorije",
+                  kako: "FINA, Mirovinski informativni centri ili e-Građani (pravila i rokovi na regos.hr)",
+                  izvor: "ZOMF" },
+                { pravo: "Pravo na informacije o ulaganjima fonda",
+                  kako: "Statut fonda, godišnje i polugodišnje izvješće — javno objavljeno",
+                  izvor: "ZOMF čl. 75." },
+                { pravo: "Pravo na jednokratnu isplatu do 20 %",
+                  kako: "Pri umirovljenju, ako je osnovna mirovina iz I. stupa veća od 115 % najniže mirovine",
+                  izvor: "Zakon o MOD-ovima" },
+                { pravo: "Pravo izbora mirovine samo iz I. stupa",
+                  kako: "Svi u oba stupa, izjavom pri ostvarivanju starosne ili prijevremene mirovine (od 2019.)",
+                  izvor: "ZOMO" },
+                { pravo: "Pravo nasljednika na kapitalizirana sredstva",
+                  kako: "Pravomoćno Rješenje o nasljeđivanju — REGOS isplaćuje zakonskim nasljednicima",
+                  izvor: "ZOMF čl. 103." },
+                { pravo: "Pravo na pritužbu HANFA-i",
+                  kako: "Pisana pritužba HANFA-i ako mirovinsko društvo ili MOD krši zakone ili propise",
+                  izvor: "Zakon o HANFA-i" },
+              ].map((r, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 3fr 1fr",
+                  gap: 12, padding: "9px 12px",
+                  background: i % 2 === 0 ? C.bg : C.white,
+                  borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>{r.pravo}</div>
+                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>{r.kako}</div>
+                  <div style={{ fontSize: 10, color: C.slateL, fontStyle: "italic" }}>{r.izvor}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 11, color: C.slateL, padding: "8px 12px",
+              background: C.bg, borderRadius: 7 }}>
+              Izvor: Zakon o obveznim mirovinskim fondovima (ZOMF), NN 19/14, 93/15, 64/18, 115/18, 58/20 ·
+              HANFA (hanfa.hr) · mss.gov.hr · HZMO (mirovinsko.hr)
+            </div>
+          </Card>
+          </Detalji>
+        </EduSection>
+
         {/* ── REFORMA ──────────────────────────────────────────────────── */}
-        <EduSection id="reforma" emoji="🔄" title="Trebamo li reformu mirovinskog sustava?" color={C.red}>
+        <EduSection id="reforma" emoji="🔄" title="Budućnost sustava: trebamo li reformu?" color={C.red}>
+          <Ukratko color={C.red}>
+            Hrvatska ima sve manje zaposlenih po umirovljeniku, pa I. stup sam neće moći davati visoke mirovine. Zato je važno
+            koristiti II. i III. stup. Ova sekcija je za one koje zanima šira slika: demografija, usporedba sa štednjom na
+            tržištu i iskustva drugih zemalja. Za osobne odluke nije nužna.
+          </Ukratko>
+          <Detalji naslov="Prikaži analizu i simulator">
 
           {/* Impact statement */}
           <div style={{ background: `linear-gradient(135deg, #1a0a0a, #3a1515)`, borderRadius: 16,
@@ -3622,8 +4082,8 @@ function EduView() {
               letterSpacing: "0.1em", marginBottom: 10 }}>Demografska matematika</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 16 }}>
               {[
-                { stat: "1,41 : 1", desc: "Omjer zaposlenih i umirovljenika u 2025.", src: "HZMO, REGOS" },
-                { stat: "~38%", desc: "Prosječna stopa zamjene I. stupa (% bruto plaće)", src: "OECD, HZMO" },
+                { stat: "≈ 1,3 : 1", desc: "Omjer osiguranika i umirovljenika (okvirno)", src: "HZMO statistika" },
+                { stat: `${Math.round(saDodatkom(calcStup1({ pvb: 1, staz: 40, pf: 1, mf: 1 })).ukupno / PROSJ_BRUTO * 100)} %`, desc: "Mirovina iz I. stupa za prosječnu plaću i 40 god. staža, u odnosu na bruto plaću", src: "izračun prema ZOMO" },
                 { stat: "< 1,0 : 1", desc: "Projicirani omjer do 2050. (DZS demografske projekcije)", src: "DZS, Eurostat" },
               ].map(it => (
                 <div key={it.stat}>
@@ -3635,7 +4095,7 @@ function EduView() {
             </div>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", lineHeight: 1.7, maxWidth: 640 }}>
               Generacijska solidarnost funkcionira dok ima dovoljno radnika koji financiraju umirovljenike.
-              S omjerom od samo <strong style={{ color: "#ffaaaa" }}>1,41 radnika po umirovljeniku</strong> i
+              S omjerom od oko <strong style={{ color: "#ffaaaa" }}>1,3 osiguranika po umirovljeniku</strong> i
               demografskim trendom starenja, matematika govori jasno: <strong style={{ color: "#ffaaaa" }}>
               budući umirovljenici ne mogu računati na isti standard od I. stupa kao sadašnji.</strong>
             </p>
@@ -3815,428 +4275,9 @@ function EduView() {
               i zaštitu prava stečenih u sadašnjem sustavu.
             </p>
           </div>
+          </Detalji>
         </EduSection>
 
-        {/* ── PRAVA OSIGURANIKA ─────────────────────────────────────── */}
-        <EduSection id="prava" emoji="⚖️" title="Prava osiguranika u II. stupu" color={C.blue}>
-
-          {/* Hero pojašnjenje */}
-          <div style={{ background: `linear-gradient(135deg, #0f2040, #1a3566)`, borderRadius: 14,
-            padding: "24px 28px", marginBottom: 22, color: "#fff" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase",
-              letterSpacing: "0.08em", marginBottom: 10 }}>Ključna razlika od I. stupa</div>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.88)", lineHeight: 1.8, maxWidth: 640 }}>
-              Sredstva u II. stupu su <strong style={{ color: "#7bffb0" }}>vaša osobna imovina</strong> —
-              ne idu u zajednički državni fond, nego na vaš individualni račun koji se vodi u
-              Središnjem registru osiguranika (<strong style={{ color: C.goldL }}>REGOS</strong>).
-              Ni Vlada ni HZMO ne mogu ih koristiti za isplatu tuđih mirovina.
-            </p>
-            <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
-              {[
-                { emoji: "🔒", label: "Osobna imovina", sub: "Ne može se oduzeti, blokirati ni koristiti za tuđe potrebe" },
-                { emoji: "📋", label: "Neotuđiva", sub: "Ne možete je prodati, zamijeniti ni prenijeti trećima" },
-                { emoji: "👨‍👩‍👧", label: "Nasljedna*", sub: "Uz zakonske uvjete (detalji niže)" },
-                { emoji: "🔍", label: "Transparentna", sub: "Stanje računa vidljivo u REGOS portalu i e-Građani" },
-              ].map(it => (
-                <div key={it.emoji} style={{ background: "rgba(255,255,255,0.09)", borderRadius: 10,
-                  padding: "10px 14px", flex: "1 1 160px" }}>
-                  <div style={{ fontSize: 20, marginBottom: 4 }}>{it.emoji}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#7fbcff", marginBottom: 3 }}>{it.label}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>{it.sub}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Tko su akteri — vizualni flow */}
-          <Card style={{ marginBottom: 18 }}>
-            <h3 style={{ fontSize: 14, marginBottom: 16, color: C.navy }}>Tko čini sustav II. stupa i koja je uloga svakog aktera?</h3>
-            <div style={{ display: "flex", alignItems: "stretch", gap: 0, overflowX: "auto" }}>
-              {[
-                { emoji: "👷", naziv: "Vi (Osiguranik)", boja: C.blue,
-                  opis: "Vlasnik sredstava. Platite 5% bruto — poslodavac to uplaćuje u vaše ime. Vi birate fond i kategoriju.",
-                  obveze: ["Odaberite OMF pri zaposlenju", "Pratite stanje na e-Građani / REGOS portalu", "Pri umirovljenju odaberite MOD"] },
-                { emoji: "🏛", naziv: "REGOS", boja: C.navy,
-                  opis: "Središnji registar osiguranika. Vodi evidenciju svih osobnih računa, prima uplate od HZMO-a i raspoređuje ih u fondove.",
-                  obveze: ["Vodi vaš osobni račun", "Rasporedit će vas u fond kategorije B ako ne odaberete", "Prebacuje sredstva MOD-u pri umirovljenju"] },
-                { emoji: "📈", naziv: "Mirovinsko društvo (OMF)", boja: C.purple,
-                  opis: "Profesionalni upravitelj fonda. Ulaže vaša sredstva u financijske instrumente. Pod nadzorom HANFA-e.",
-                  obveze: ["Ulaže novac prema strategiji fonda", "Naplaćuje naknadu za upravljanje (0,23 % god. u 2026.)", "Pod nadzorom je Hanfe"] },
-                { emoji: "🏦", naziv: "MOD", boja: C.green,
-                  opis: "Mirovinsko osiguravajuće društvo. Od vaših akumuliranih sredstava formira i isplaćuje doživotnu rentu.",
-                  obveze: ["Sklapa ugovor o mirovini s vama", "Isplaćuje doživotnu rentu", "Preuzima dugovječnosni rizik"] },
-                { emoji: "🔍", naziv: "HANFA", boja: C.gold,
-                  opis: "Regulator i nadzornik. Kontrolira zakonitost poslovanja svih mirovinskih društava i MOD-ova.",
-                  obveze: ["Nadzire OMF i MOD", "Propisuje limite ulaganja", "Provodi inspekcije i kazne"] },
-              ].map((a, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "stretch", flex: "none" }}>
-                  <div style={{ width: 190, padding: "14px 14px", background: a.boja + "0a",
-                    border: `1.5px solid ${a.boja}22`, borderRadius: 10, margin: "0 4px" }}>
-                    <div style={{ fontSize: 24, marginBottom: 6 }}>{a.emoji}</div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: a.boja, marginBottom: 6 }}>{a.naziv}</div>
-                    <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5, marginBottom: 10 }}>{a.opis}</div>
-                    <div style={{ fontSize: 10, color: C.slateL, fontWeight: 600, marginBottom: 4 }}>ZADUŽENJA:</div>
-                    {a.obveze.map((o, j) => (
-                      <div key={j} style={{ fontSize: 10, color: C.slate, lineHeight: 1.4,
-                        padding: "3px 0", borderBottom: j < a.obveze.length-1 ? `1px solid ${C.border}` : "none" }}>
-                        › {o}
-                      </div>
-                    ))}
-                  </div>
-                  {i < 4 && (
-                    <div style={{ display: "flex", alignItems: "center", color: C.slateL,
-                      fontSize: 18, padding: "0 2px", flexShrink: 0 }}>→</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* MOD detaljno */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }}>
-            <Card style={{ borderLeft: `4px solid ${C.green}` }}>
-              <h3 style={{ fontSize: 14, color: C.green, marginBottom: 14 }}>🏦 Što je MOD i kako upravlja vašim novcem?</h3>
-              <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
-                <strong>MOD (Mirovinsko osiguravajuće društvo)</strong> je privatna financijska institucija
-                koja od vaših akumuliranih sredstava u OMF-u formira doživotnu mirovinu.
-                U Hrvatskoj trenutno posluju <strong>dva MOD-a</strong> (registar Hanfe, 2026.):
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-                {[
-                  { n: "Hrvatsko mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
-                  { n: "Raiffeisen mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
-                ].map(m => (
-                  <div key={m.n} style={{ display: "flex", justifyContent: "space-between",
-                    padding: "5px 10px", background: C.greenL, borderRadius: 7, fontSize: 11 }}>
-                    <strong style={{ color: C.navy }}>{m.n}</strong>
-                    <span style={{ color: C.slateL }}>{m.v}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.7 }}>
-                <p style={{ marginBottom: 8 }}>
-                  <strong>Kako MOD izračunava rentu?</strong> Aktuarskim modelom uzima u obzir:
-                </p>
-                <ul style={{ paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
-                  <li>Vaš akumulirani kapital iz OMF-a</li>
-                  <li>Spol i dob pri umirovljenju (aktuarski tablice)</li>
-                  <li>Odabranu vrstu mirovine (doživotna, zajednička, zajamčeno razdoblje)</li>
-                  <li>Naknadu MOD-a (zakonom ograničena)</li>
-                </ul>
-                <div style={{ marginTop: 10, padding: "8px 10px", background: C.amberL,
-                  borderRadius: 7, fontSize: 11, color: C.amber }}>
-                  ⚠ MOD preuzima <strong>dugovječnosni rizik</strong> — obvezan je isplaćivati rentu
-                  bez obzira koliko dugo živite. Mjesečni iznos zato ovisi o očekivanom trajanju života i kamatama.
-                </div>
-              </div>
-            </Card>
-
-            <Card style={{ borderLeft: `4px solid ${C.purple}` }}>
-              <h3 style={{ fontSize: 14, color: C.purple, marginBottom: 14 }}>📈 Kategorije OMF fondova (A, B, C)</h3>
-              <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
-                Svako mirovinsko društvo upravlja s <strong>tri kategorije fonda</strong> različitog rizika.
-                Ako sami ne izaberete, REGOS vas raspoređuje u kategoriju B.
-              </p>
-              {[
-                { kat: "A", boja: C.green, profil: "Agresivni rast",
-                  dionice: "najviše dionica", za: "Više od 10 god. do mirovine",
-                  opis: "Najviši očekivani prinos dugoročno, ali i najveće oscilacije. Kad do mirovine ostane manje od 10 godina, REGOS vas prebacuje u B (na zahtjev možete ostati u A do 5 godina prije mirovine)." },
-                { kat: "B", boja: C.blue, profil: "Umjereni rast",
-                  dionice: "umjereno dionica", za: "Zadana kategorija",
-                  opis: "Ravnoteža rasta i sigurnosti. U nju se raspoređuju svi koji ne izaberu kategoriju." },
-                { kat: "C", boja: C.slate, profil: "Konzervativni",
-                  dionice: "malo ili bez dionica", za: "Zadnjih 5 god. do mirovine",
-                  opis: "Naglasak na zaštiti kapitala: niži prinos, niži rizik gubitka. Namijenjen je osiguranicima kojima je do mirovine manje od 5 godina." },
-              ].map(f => (
-                <div key={f.kat} style={{ marginBottom: 10, padding: "10px 12px",
-                  background: f.boja + "0a", border: `1px solid ${f.boja}22`, borderRadius: 9 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: f.boja,
-                        background: f.boja+"18", padding: "1px 8px", borderRadius: 6 }}>Kat. {f.kat}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{f.profil}</span>
-                    </div>
-                    <span style={{ fontSize: 10, color: f.boja, fontWeight: 600 }}>{f.dionice}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.slateL, marginBottom: 3 }}>📍 {f.za}</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>{f.opis}</div>
-                </div>
-              ))}
-              <div style={{ fontSize: 11, color: C.slateL, marginTop: 6 }}>
-                Fond i kategoriju možete promijeniti preko REGOS-a (FINA ili e-Građani). Točna pravila i rokove provjerite na regos.hr.
-              </div>
-            </Card>
-          </div>
-
-          {/* Oporezivanje mirovina */}
-          <Card style={{ marginBottom: 18, border: `2px solid ${C.gold}33` }}>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 14 }}>💶 Oporezivanje mirovina — što ostaje na računu</h3>
-            <div style={{ padding: "10px 14px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}55`, marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 4 }}>⏳ Od 1.1.2027. porez na mirovine trebao bi se ukinuti</div>
-              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
-                Vlada je u rujnu 2026. uputila Saboru izmjene Zakona o porezu na dohodak: umanjenje poreza za umirovljenike raste s 50 %
-                na 100 % za dio mirovine oporeziv nižom stopom (do 5.000 EUR osnovice). Ako ih Sabor usvoji, većina umirovljenika od 2027. neće plaćati porez.
-                Do tada vrijede pravila u nastavku.
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Kako se obračunava porez</div>
-                <ol style={{ fontSize: 12, color: C.slate, lineHeight: 1.8, paddingLeft: 16, margin: 0 }}>
-                  <li>Porezna osnovica = mirovina − <strong>{OSOBNI_ODBITAK} EUR</strong> (osobni odbitak/mj.)</li>
-                  <li>Porez po stopi vašeg grada ili općine: niža stopa 15–23 % (najčešće 20 %) do 5.000 EUR osnovice, viša 25–33 % iznad</li>
-                  <li>Umirovljenici plaćaju <strong>pola</strong> obračunatog poreza (umanjenje 50 %)</li>
-                  <li>Prirez ne postoji od 2024. (uključen je u stope gradova)</li>
-                </ol>
-              </div>
-              <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Primjeri neto mirovine</div>
-                {[600, 900, 1200, 1800].map(b => {
-                  const t = calcNetoMirovina(b);
-                  return (
-                    <div key={b} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, borderBottom: `1px solid ${C.border}`, padding: "4px 0" }}>
-                      <span style={{ color: C.slateL }}>{b} EUR bruto</span>
-                      <span style={{ fontWeight: 700, color: C.green }}>≈ {fmt(t.neto)} EUR neto</span>
-                    </div>
-                  );
-                })}
-                <div style={{ fontSize: 10, color: C.slateL, marginTop: 6 }}>Stopa 20 % · osobni odbitak {OSOBNI_ODBITAK} EUR · 2026.</div>
-              </div>
-            </div>
-            <div style={{ fontSize: 11, color: C.slateL, lineHeight: 1.6 }}>
-              Mirovine ≤ {OSOBNI_ODBITAK} EUR/mj. ne plaćaju porez. Osobni odbitak može biti veći uz uzdržavane članove ili invaliditet.
-              Točan obračun radi HZMO i isplaćuje neto iznos. Godišnji obračun (porezna prijava) nije obveza za umirovljenike s jednim izvorom dohotka.
-            </div>
-          </Card>
-
-          {/* Timeline isplate */}
-          <Card style={{ marginBottom: 18 }}>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 18 }}>📋 Kad i kako se isplaćuju sredstva — korak po korak</h3>
-            <div style={{ position: "relative", paddingLeft: 32 }}>
-              {/* Vertical line */}
-              <div style={{ position: "absolute", left: 10, top: 8, bottom: 8,
-                width: 2, background: `linear-gradient(${C.navy}, ${C.green})`, borderRadius: 1 }} />
-              {[
-                { n: "1", boja: C.navy, naslov: "Ostvarivanje prava na mirovinu", emoji: "📝",
-                  opis: "Podnosite zahtjev HZMO-u za starosnu ili prijevremenu mirovinu. HZMO izdaje Rješenje o mirovini i šalje podatke REGOS-u.",
-                  detalj: null },
-                { n: "2", boja: C.navy, naslov: "Odluka: kombinirana ili samo I. stup?", emoji: "⚖️",
-                  opis: "Birate mirovinu SAMO iz I. stupa (računa se kao da nikad niste bili u II. stupu, uz dodatak 27 %; sredstva II. stupa idu u državni proračun) ili mirovinu iz I. + II. stupa.",
-                  detalj: "Od 2019. ovaj izbor ima svatko tko je u oba stupa. Prije odluke dobivate informativni izračun obje mogućnosti." },
-                { n: "3", boja: C.blue, naslov: "Odabir MOD-a (za kombiniranu)", emoji: "🏦",
-                  opis: "Nakon obavijesti REGOS-a birate MOD u FINA-i, Mirovinskom informativnom centru ili putem e-Građana. Ako ne odaberete u roku, REGOS vas raspoređuje po službenoj dužnosti.",
-                  detalj: "Trenutno posluju dva MOD-a. Usporedite ponuđene iznose za istu vrstu mirovine." },
-                { n: "4", boja: C.blue, naslov: "Jednokratna isplata do 20% (opcija)", emoji: "💵",
-                  opis: "Možete zatražiti jednokratnu isplatu do 20 % kapitala prije početka doživotne mirovine. Uvjet: osnovna mirovina iz I. stupa mora biti veća od 115 % najniže mirovine.",
-                  detalj: null },
-                { n: "5", boja: C.purple, naslov: "Ugovor o mirovini s MOD-om", emoji: "📄",
-                  opis: "MOD i vi potpisujete Ugovor o mirovini. U njemu se određuje: vrsta mirovine, iznos rente, uvjeti usklađivanja, eventualno zajamčeno razdoblje i ime korisnika.",
-                  detalj: "Jednom sklopljeni ugovor nije moguće promijeniti. Zato je izbor vrste mirovine iznimno važna i TRAJNA odluka." },
-                { n: "6", boja: C.green, naslov: "Isplata doživotne rente", emoji: "💰",
-                  opis: "Mirovina iz II. stupa isplaćuje se svaki mjesec dok ste živi, bez obzira na duljinu života. Način usklađivanja s inflacijom navodi se u ugovoru.",
-                  detalj: null },
-              ].map((k, i) => (
-                <div key={i} style={{ display: "flex", gap: 16, marginBottom: 18, position: "relative" }}>
-                  <div style={{ position: "absolute", left: -28, top: 2, width: 20, height: 20,
-                    borderRadius: "50%", background: k.boja, color: "#fff",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 10, fontWeight: 800, flexShrink: 0, zIndex: 1 }}>{k.n}</div>
-                  <div style={{ background: k.boja + "08", border: `1px solid ${k.boja}22`,
-                    borderRadius: 10, padding: "12px 14px", flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 16 }}>{k.emoji}</span>
-                      <strong style={{ fontSize: 13, color: C.navy }}>{k.naslov}</strong>
-                    </div>
-                    <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6, marginBottom: k.detalj ? 6 : 0 }}>
-                      {k.opis}
-                    </p>
-                    {k.detalj && (
-                      <div style={{ fontSize: 11, color: C.slateL, background: C.bg,
-                        borderRadius: 7, padding: "6px 10px", lineHeight: 1.5 }}>
-                        💡 {k.detalj}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Izbor: samo I. stup ili I. + II. */}
-          <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.navy}` }}>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 10 }}>🔁 Izbor pri umirovljenju: samo I. stup ili I. + II. stup</h3>
-            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
-              <li><strong>Tko bira:</strong> od 1.1.2019. svatko tko je u oba stupa, u postupku ostvarivanja starosne ili prijevremene
-                starosne mirovine. Nije bitno kako ste ušli u II. stup.</li>
-              <li><strong>Samo I. stup:</strong> mirovina se računa kao da ste uvijek bili samo u I. stupu, uz dodatak od 27 %.
-                Sredstva s računa u II. stupu prenose se u državni proračun.</li>
-              <li><strong>I. + II. stup:</strong> osnovna mirovina iz I. stupa (staž od 2002. računa se s faktorom oko 0,75) uz dodatak od
-                27 %, plus doživotna mirovina iz II. stupa preko MOD-a. Moguće samo ako je osnovna mirovina veća od najniže.</li>
-              <li><strong>Kako odlučiti:</strong> HZMO i REGOS prije odluke šalju informativni izračun obje mogućnosti. Izaberite onu s
-                većim ukupnim iznosom; ako je razlika mala, razmislite i o vrsti mirovine u MOD-u (npr. obiteljskoj).</li>
-              <li><strong>Odluka je trajna.</strong> Izjava se daje u Mirovinskom informativnom centru, u FINA-i ili putem e-usluge „Odabir mirovine“.</li>
-            </ul>
-            <div style={{ marginTop: 10, fontSize: 12, color: C.purple, fontWeight: 600 }}>
-              → Okvirnu usporedbu za svoje podatke napravite u kalkulatoru „Samo I. ili I. + II.“ (izbornik Odluke pred mirovinu).
-            </div>
-          </Card>
-
-          {/* Nasljeđivanje — centralni prikaz */}
-          <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.gold}` }}>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 6 }}>👨‍👩‍👧 Nasljeđivanje sredstava II. stupa — što zakon zaista kaže</h3>
-            <p style={{ fontSize: 12, color: C.slateL, marginBottom: 16, lineHeight: 1.6 }}>
-              Zakon o obveznim mirovinskim fondovima, čl. 103. st. 1. (NN 19/14, 93/15, 64/18, 115/18, 58/20)
-            </p>
-
-            {/* Flowchart nasljeđivanja */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 8,
-              alignItems: "center", marginBottom: 20 }}>
-              {/* Slučaj 1: smrt prije umirovljenja */}
-              <div style={{ background: C.navy + "0a", border: `1.5px solid ${C.navy}22`,
-                borderRadius: 10, padding: 14, textAlign: "center" }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>💀</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 6 }}>
-                  Smrt PRIJE umirovljenja
-                </div>
-                <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.5 }}>
-                  Cijeli akumulirani kapital na osobnom računu u OMF-u
-                </div>
-              </div>
-
-              <div style={{ fontSize: 18, color: C.slateL, textAlign: "center" }}>→</div>
-
-              <div>
-                <div style={{ background: C.greenL, border: `1.5px solid ${C.green}33`,
-                  borderRadius: 10, padding: 12, marginBottom: 8, textAlign: "center" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 4 }}>
-                    ✅ Ako NEMA korisnika obiteljske mirovine (ZOMO)
-                  </div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Sredstva su <strong>predmet nasljeđivanja</strong> prema Zakonu o nasljeđivanju.
-                    Nasljednici (fizičke ili pravne osobe) podnose pravomoćno Rješenje o nasljeđivanju.
-                  </div>
-                </div>
-                <div style={{ background: C.amberL, border: `1.5px solid ${C.gold}33`,
-                  borderRadius: 10, padding: 12, textAlign: "center" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.amber, marginBottom: 4 }}>
-                    ⚠ Ako IMA korisnika obiteljske mirovine (ZOMO)
-                  </div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Obitelj prima obiteljsku mirovinu iz I. stupa.
-                    Sredstva iz II. stupa ostaju u sustavu — <strong>ne nasljeđuju se</strong>.
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ fontSize: 18, color: C.slateL, textAlign: "center" }}>→</div>
-
-              <div style={{ background: C.blueL, border: `1.5px solid ${C.blue}22`,
-                borderRadius: 10, padding: 14, textAlign: "center" }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>📄</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 6 }}>Postupak isplate nasljednicima</div>
-                <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.5, textAlign: "left" }}>
-                  1. Pravomoćno Rješenje o nasljeđivanju<br/>
-                  2. Original ili ovjeren original<br/>
-                  3. Zahtjev REGOS-u / FINA-i<br/>
-                  4. Isplata na račun nasljednika<br/>
-                  <span style={{ color: C.slateL, marginTop: 4, display: "block" }}>
-                    Nasljednici mogu biti i pravne osobe, udruge, JLS (grad, općina) — ako se zakonski nasljednici odriču nasljedstva.
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Smrt nakon umirovljenja */}
-            <div style={{ background: C.redL, border: `1.5px solid ${C.red}22`,
-              borderRadius: 10, padding: 16, marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 8 }}>
-                ⚠ Smrt NAKON umirovljenja (u tijeku isplate rente)
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Bez zajamčenog razdoblja</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Renta prestaje smrću. Preostali neisplaćeni kapital ostaje MOD-u.
-                    Nasljednici ne dobivaju ništa.
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 4 }}>Sa zajamčenim razdobljem (5–20 god.)</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Smrt unutar zajamčenog perioda → renta se nastavlja isplaćivati
-                    <strong> imenovanom korisniku</strong> (min. 50% vaše rente) do kraja zajamčenog roka.
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 4 }}>Zajednička mirovina (bračni par)</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Smrću jednog bračnog druga, nadživjeli bračni drug nastavlja primati
-                    <strong> min. 60%</strong> prvobitne rente do kraja života.
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 4 }}>Zajednička + zajamčeno razdoblje</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>
-                    Kombinacija — najniži početni iznos rente, ali
-                    <strong> maksimalna zaštita</strong> i bračnog druga i imenovanog korisnika.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: "10px 14px", background: C.purpleL, borderRadius: 9,
-              fontSize: 11, color: C.purple, lineHeight: 1.6 }}>
-              💡 <strong>Praktični savjet:</strong> Vrstu mirovine odabirete jednom pri sklapanju ugovora s MOD-om
-              — ta odluka je <strong>nepromjenjiva</strong>. Razgovarajte s partnerom i savjetnikom
-              prije odabira. Ako imate ovisne članove obitelji, razmatrajte zajedničku mirovinu ili zajamčeno razdoblje,
-              iako će početna renta biti niža.
-            </div>
-          </Card>
-
-          {/* Prava i zaštite — tablični prikaz */}
-          <Card>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 16 }}>✅ Sva vaša prava u II. stupu — pregled</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {[
-                { pravo: "Pravo na uvid u stanje računa",
-                  kako: "e-Građani portal, REGOS web, godišnji izviještaj poštom",
-                  izvor: "ZOMF čl. 70." },
-                { pravo: "Pravo izbora i promjene fonda i kategorije",
-                  kako: "FINA, Mirovinski informativni centri ili e-Građani (pravila i rokovi na regos.hr)",
-                  izvor: "ZOMF" },
-                { pravo: "Pravo na informacije o ulaganjima fonda",
-                  kako: "Statut fonda, godišnje i polugodišnje izvješće — javno objavljeno",
-                  izvor: "ZOMF čl. 75." },
-                { pravo: "Pravo na jednokratnu isplatu do 20 %",
-                  kako: "Pri umirovljenju, ako je osnovna mirovina iz I. stupa veća od 115 % najniže mirovine",
-                  izvor: "Zakon o MOD-ovima" },
-                { pravo: "Pravo izbora mirovine samo iz I. stupa",
-                  kako: "Svi u oba stupa, izjavom pri ostvarivanju starosne ili prijevremene mirovine (od 2019.)",
-                  izvor: "ZOMO" },
-                { pravo: "Pravo nasljednika na kapitalizirana sredstva",
-                  kako: "Pravomoćno Rješenje o nasljeđivanju — REGOS isplaćuje zakonskim nasljednicima",
-                  izvor: "ZOMF čl. 103." },
-                { pravo: "Pravo na pritužbu HANFA-i",
-                  kako: "Pisana pritužba HANFA-i ako mirovinsko društvo ili MOD krši zakone ili propise",
-                  izvor: "Zakon o HANFA-i" },
-              ].map((r, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 3fr 1fr",
-                  gap: 12, padding: "9px 12px",
-                  background: i % 2 === 0 ? C.bg : C.white,
-                  borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>{r.pravo}</div>
-                  <div style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>{r.kako}</div>
-                  <div style={{ fontSize: 10, color: C.slateL, fontStyle: "italic" }}>{r.izvor}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 12, fontSize: 11, color: C.slateL, padding: "8px 12px",
-              background: C.bg, borderRadius: 7 }}>
-              Izvor: Zakon o obveznim mirovinskim fondovima (ZOMF), NN 19/14, 93/15, 64/18, 115/18, 58/20 ·
-              HANFA (hanfa.hr) · mss.gov.hr · HZMO (mirovinsko.hr)
-            </div>
-          </Card>
-        </EduSection>
       </div>
     </div>
   );
@@ -4286,8 +4327,14 @@ function Stup3View({ user, onAuthRequired }) {
     <div className="fadeIn">
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>III. mirovinski stup</h2>
-        <p style={{ color: C.slateL, fontSize: 13 }}>Dobrovoljna mirovinska štednja · Državni poticaj (DPS) 15% · Dostupno od 55 god.</p>
+        <p style={{ color: C.slateL, fontSize: 13 }}>Dobrovoljna mirovinska štednja · Državni poticaj 15 % · Dostupno od 55 god.</p>
       </div>
+
+      <Ukratko color={C.green}>
+        III. stup je dobrovoljna štednja u <Pojam k="DMF">dobrovoljnom mirovinskom fondu</Pojam>. Država dodaje 15 % vaše uplate
+        (<Pojam k="DPS" />), najviše 99,54 EUR godišnje: za to je dovoljno 55,30 EUR mjesečno. Poslodavac vam može uplaćivati do
+        804 EUR godišnje bez poreza. Novac je dostupan od 55. godine. Najbolji je način da sami povećate buduću mirovinu.
+      </Ukratko>
 
       {/* DPS callout */}
       <div style={{ background: `linear-gradient(135deg, ${C.green}, #1a5c35)`, borderRadius: 14,
@@ -4299,7 +4346,7 @@ function Stup3View({ user, onAuthRequired }) {
             Hrvatska država daje <strong style={{ color: "#7bffb0" }}>15% od vaše godišnje uplate</strong> besplatno — do
             maksimalnih <strong style={{ color: "#7bffb0" }}>{DPS_MAX.toFixed(2)} EUR godišnje</strong>.
             Ostvaruje se uplatom <strong style={{ color: "#7bffb0" }}>{DPS_MAX_UPLATA} EUR godišnje</strong> ({(DPS_MAX_UPLATA/12).toFixed(2)} EUR/mj.).
-            <br/>U fazi štednje <strong style={{ color: "#7bffb0" }}>nema poreza na prinos</strong>. Isplata rente oporezuje se porezom na dohodak uz primjenu osobnog odbitka; prijevremeni otkup prije 55. god. povlači i povrat DPS-a.
+            <br/>U fazi štednje <strong style={{ color: "#7bffb0" }}>nema poreza na prinos</strong>. Mirovina iz III. stupa oporezuje se kao dohodak uz osobni odbitak. Sredstva se u pravilu mogu podići tek od 55. godine.
           </p>
         </div>
         <div style={{ display: "flex", gap: 14 }}>
@@ -4664,6 +4711,11 @@ function PlanerView() {
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>Koliko mi nedostaje?</h2>
         <p style={{ color: C.slateL, fontSize: 13 }}>Unesite željenu mirovinu — kalkulator pokazuje razliku i što učiniti da je dosegnete</p>
       </div>
+
+      <Ukratko color={C.gold}>
+        Kalkulator procjenjuje vašu buduću mirovinu iz I. i II. stupa u današnjem novcu i uspoređuje je sa željenim iznosom.
+        Ako nešto nedostaje, pokazuje tri načina da to nadoknadite: štednja u III. stupu, viša plaća ili dulji rad.
+      </Ukratko>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <Card>
@@ -5053,6 +5105,10 @@ function VodicView() {
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>Praktični vodič po životnoj dobi</h2>
         <p style={{ color: C.slateL, fontSize: 13 }}>Što učiniti sada, ovisno o vašoj dobi i fazi karijere</p>
       </div>
+
+      <Ukratko color={C.blue}>
+        Pomaknite klizač na svoju dob. Koraci označeni kao PRIORITET imaju najveći učinak na vašu buduću mirovinu.
+      </Ukratko>
 
       {/* Dob slider */}
       <Card style={{ marginBottom: 20 }}>
