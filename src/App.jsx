@@ -28,18 +28,26 @@ const C = {
   amber:  "#d97706", amberL: "#fffbeb",
   border: "#d1d5db", bg: "#f0eff9",
 };
-const AVM = 14.45; // EUR, od 1.7.2025.
-const MIN_MIROVINA_FAKTOR = 1.06; // najniža = 106% AVM * staž * PF * MF
-const MAX_VB = 3.8; // maksimalni vrijednosni bodovi
-const OSOBNI_ODBITAK = 600; // EUR/mj., od 1.1.2025. (ZPD, NN 152/2024)
-const POREZNI_PRAG_MJ = 4200; // EUR/mj. porezne osnovice — do ovog iznosa stopa 20%, iznad 30%
-// Mirovine: obračunati porez smanjuje se za 50% (ZPD čl. 45., NN 152/2024)
-function calcNetoMirovina(bruto) {
+const AVM = 15.64; // EUR, od 1.7.2026. (HZMO)
+const AVM_DATUM = "1.7.2026.";
+const PODACI_AZURIRANI = "listopad 2026.";
+const MIN_MIROVINA_FAKTOR = 1.06; // najniža mirovina = 106 % AVM po godini staža (ZOMO čl. 80.)
+const MAX_VB = 3.8; // najviši prosječni vrijednosni bod (Zakon o najvišoj mirovini)
+const PROSJ_BRUTO = 2016; // EUR, prosječna mjesečna bruto plaća 2025. (DZS)
+const MIN_PLACA = 1050; // EUR bruto, minimalna plaća 2026.
+const FAKTOR_OSNOVNE = 0.75; // faktor osnovne mirovine za staž od 2002. u oba stupa (ZOMO čl. 90.)
+const DODATAK = 0.27; // dodatak na mirovinu iz I. stupa (NN 156/23)
+const OSOBNI_ODBITAK = 600; // EUR/mj. (ZPD, NN 152/2024)
+const POREZNI_PRAG_MJ = 5000; // EUR/mj. — niža stopa do 60.000 EUR/god.
+
+// Porez na mirovinu: stopu određuje grad/općina (zadano 20 % / 30 %), obračunati porez umanjuje se za 50 %.
+// Prijedlog za 2027. (u Saboru): umanjenje 100 % za dio oporeziv nižom stopom.
+function calcNetoMirovina(bruto, { stopa = 0.20, visaStopa = 0.30, godina = 2026 } = {}) {
   const osnovica = Math.max(0, bruto - OSOBNI_ODBITAK);
-  const porezBruto = osnovica <= POREZNI_PRAG_MJ
-    ? osnovica * 0.20
-    : POREZNI_PRAG_MJ * 0.20 + (osnovica - POREZNI_PRAG_MJ) * 0.30;
-  const porezEfektivni = porezBruto * 0.50; // halviranje za mirovine
+  const nizi = Math.min(osnovica, POREZNI_PRAG_MJ) * stopa;
+  const visi = Math.max(0, osnovica - POREZNI_PRAG_MJ) * visaStopa;
+  const porezBruto = nizi + visi;
+  const porezEfektivni = godina >= 2027 ? visi * 0.50 : porezBruto * 0.50;
   return { osnovica, porezBruto, porezEfektivni, neto: bruto - porezEfektivni };
 }
 
@@ -64,6 +72,67 @@ function calcStup1({ pvb, staz, pf, mf, avm = AVM }) {
   const najvisa = staz * MAX_VB * pf * mf * avm;
   const efektivna = Math.max(najniza, Math.min(najvisa, bruto));
   return { ob, bruto, najniza, najvisa, efektivna };
+}
+
+// Usporedba izbora pri umirovljenju za osiguranike u oba stupa (od 2019. bira svatko):
+// "samo I. stup": mirovina kao da je bio samo u I. stupu + 27 %, sredstva II. stupa idu u proračun.
+// "I. + II.": osnovna mirovina (staž od 2002. × faktor 0,75) + 27 %, plus renta iz II. stupa.
+// Dodatak od 27 % računa se na mirovinu iz formule; ako je s dodatkom niža od najniže, isplaćuje se najniža (bez dodatka).
+function saDodatkom(r) {
+  const izFormule = Math.min(r.najvisa, r.bruto);
+  const s = izFormule * (1 + DODATAK);
+  return s >= r.najniza
+    ? { ukupno: s, mirovina: izFormule, dodatak: izFormule * DODATAK, najniza: false }
+    : { ukupno: r.najniza, mirovina: r.najniza, dodatak: 0, najniza: true };
+}
+
+function calcIzbor({ pvb, staz, stazOd2002, pf = 1, mf = 1, avm = AVM, rentaII = 0 }) {
+  const post = Math.min(Math.max(0, stazOd2002), staz);
+  const samoI = calcStup1({ pvb, staz, pf, mf, avm });
+  const osnovna = calcStup1({ pvb, staz: staz - post + post * FAKTOR_OSNOVNE, pf, mf, avm });
+  const dI = saDodatkom(samoI);
+  const dO = saDodatkom(osnovna);
+  const kombinirana = dO.ukupno + rentaII;
+  return { samoI, osnovna, dI, dO, samoIUkupno: dI.ukupno, osnovnaSDodatkom: dO.ukupno, kombinirana, razlika: kombinirana - dI.ukupno };
+}
+
+// Kombinirana mirovina (I. + II.) kad je cijeli staž od 2002. ili zadani broj godina u II. stupu.
+function kombiniranaMirovina({ pvb, staz, stazOd2002 = staz, pf = 1, mf = 1, avm = AVM, rentaII = 0 }) {
+  const iz = calcIzbor({ pvb, staz, stazOd2002, pf, mf, avm, rentaII });
+  return { osnovna: iz.dO.mirovina, dodatak: iz.dO.dodatak, renta: rentaII, ukupno: iz.kombinirana, samoI: iz.samoIUkupno };
+}
+
+const TEKUCA_GODINA = 2026;
+const DPS_STOPA = 0.15;
+const DPS_MAX_UPLATA_GOD = 663.61;
+
+// Dob za starosnu mirovinu (ZOMO čl. 38. i 170.): muškarci 65; žene 64 god. u 2026., +3 mj. godišnje do 65 u 2030.
+function dobZaStarosnu(spol, godRodjenja) {
+  if (spol !== "Ž") return 65;
+  const prag = { 2026: 64, 2027: 64.25, 2028: 64.5, 2029: 64.75 };
+  for (let y = TEKUCA_GODINA; y <= 2030; y++) {
+    const d = prag[y] ?? 65;
+    if (y - godRodjenja >= d) return d;
+  }
+  return 65;
+}
+function dobZaPrijevremenu(spol, godRodjenja) {
+  if (spol !== "Ž") return { dob: 60, staz: 35 };
+  const prag = { 2026: [59, 34], 2027: [59.25, 34.25], 2028: [59.5, 34.5], 2029: [59.75, 34.75] };
+  for (let y = TEKUCA_GODINA; y <= 2030; y++) {
+    const [d, st] = prag[y] ?? [60, 35];
+    if (y - godRodjenja >= d) return { dob: d, staz: st };
+  }
+  return { dob: 60, staz: 35 };
+}
+const fmtDob = (d) => {
+  const g = Math.floor(d); const m = Math.round((d - g) * 12);
+  return m ? `${g} god. i ${m} mj.` : `${g} god.`;
+};
+
+function godineOd2002(godRodjenja, staz, dobUmirovljenja) {
+  const godinaUmirovljenja = godRodjenja + dobUmirovljenja;
+  return Math.max(0, Math.min(staz, godinaUmirovljenja - 2002));
 }
 
 function calcStup2FV({ bruto_placa, god_stednje, neto_prinos }) {
@@ -154,7 +223,9 @@ function exportToExcel(scenariji, username) {
   const body1 = scenariji.map(s => {
     const tip = s.tip === "stup3" ? "III. stup" : s.stup2 && s.stup1 ? "I.+II. stup" : s.stup1 ? "I. stup" : "—";
     const r1 = s.stup1 ? calcStup1(s.stup1) : null;
-    const dod27 = r1 ? r1.efektivna * 0.27 : 0;
+    const post2002 = s.stup1 && s.stup2 ? Math.min(s.stup1.staz, s.stup2.god_stednje) : 0;
+    const r1osn = s.stup1 ? calcStup1({ ...s.stup1, staz: s.stup1.staz - post2002 + post2002 * FAKTOR_OSNOVNE }) : null;
+    const dod27 = r1osn ? r1osn.efektivna * DODATAK : 0;
 
     const k2raw = s.stup2 ? calcStup2FV(s.stup2) : 0;
     const jed_pct = s.stup2 ? (s.stup2.jednokratni_pct || 0) : 0;
@@ -171,8 +242,8 @@ function exportToExcel(scenariji, username) {
       dps3 = Math.min(s3.uplata * 12, DPS_MAX_U) * DPS_S;
     }
 
-    const uk = (r1 ? r1.efektivna + dod27 : 0) + renta2;
-    const ref_placa = s.stup2 ? s.stup2.bruto_placa : (s.stup3 ? 1300 : 1300);
+    const uk = (r1osn ? r1osn.efektivna + dod27 : 0) + renta2;
+    const ref_placa = s.stup2 ? s.stup2.bruto_placa : PROSJ_BRUTO;
 
     return [
       s.naziv || "—",
@@ -230,7 +301,7 @@ function exportToExcel(scenariji, username) {
 
     xlAppendSheet(wb, [
       ["I. MIROVINSKI STUP — Detalji scenarija"],
-      ["Formula: M = PVB × Staž × PF × MF × AVM | ZOMO | AVM = 14,45 EUR (1.7.2025.)"],
+      [`Formula: M = PVB × Staž × PF × MF × AVM | ZOMO | AVM = ${fmt(AVM)} EUR (${AVM_DATUM})`],
       [],
       hdr2,
       ...stup1Sc.map(s => {
@@ -258,7 +329,7 @@ function exportToExcel(scenariji, username) {
 
     xlAppendSheet(wb, [
       ["II. MIROVINSKI STUP — Detalji scenarija"],
-      ["Formula: FV = PMT × [((1+r_mj)^n_mj − 1)/r_mj] | ZOMF | Naknade OMF: max 0,24% god. (HANFA 2025.)"],
+      ["Formula: FV = PMT × [((1+r_mj)^n_mj − 1)/r_mj] | ZOMF | Naknada OMF: 0,23% god. (2026.)"],
       [],
       hdr3,
       ...stup2Sc.map(s => {
@@ -346,7 +417,7 @@ function exportToExcel(scenariji, username) {
 
   xlAppendSheet(wb, [
     ["PROJEKCIJA AVM — 20 polugodišta (2026.–2035.)"],
-    [`Polazni AVM: ${AVM} EUR (1.7.2025.) | Swiss index: 85% rast plaća + 15% IPC | ZOMO 2025.`],
+    [`Polazni AVM: ${fmt(AVM)} EUR (${AVM_DATUM}) | usklađivanje 1.1. i 1.7. (ZOMO čl. 91.)`],
     [`Pretpostavke: godišnji IPC ${(avm_ipc * 100).toFixed(0)}%, rast plaća ${(avm_ibp * 100).toFixed(0)}%`],
     [],
     projHdr,
@@ -361,23 +432,25 @@ function exportToExcel(scenariji, username) {
     ["Formula", "Matematički izraz", "Pravni izvor", "Napomena"],
     ["Osnovna mirovina I. stupa", "M = PVB × Staž × PF × MF × AVM", "ZOMO čl. 75.", ""],
     ["Osobni bodovi", "OB = PVB × Staž × PF", "ZOMO čl. 76.", ""],
-    ["Najniža mirovina", "M_min = 1,06 × AVM × Staž × PF × MF", "ZOMO čl. 80.", "Od 1.7.2025."],
+    ["Najniža mirovina", "M_min = 1,06 × AVM × Staž × PF × MF", "ZOMO čl. 80.", `Od ${AVM_DATUM}`],
     ["Najviša mirovina", "M_max = Staž × 3,8 × PF × MF × AVM", "Zakon o najvišoj mirovini", ""],
-    ["Prijevremena — PF", "PF = 1,00 − 0,002 × broj_mj", "ZOMO čl. 77.", "Trajno smanjenje"],
+    ["Prijevremena — PF", "PF = 1,00 − 0,002 × broj_mj", "ZOMO čl. 83.", "Smanjenje se ukida sa 70 god."],
     ["Odgoda mirovine — PF", "PF = 1,00 + 0,0045 × broj_mj", "ZOMO čl. 77.", "Trajno povećanje"],
     ["Dodatak na mirovinu", "Dod = 0,27 × osnovna mirovina", "NN 156/2023", "Od 1.1.2024."],
     ["Invalidska mirovina — MF (potpuna)", "MF = 1,10", "ZOMO čl. 48.", "Od 1.1.2026."],
     ["Invalidska mirovina — MF (djelomična)", "MF = 0,90", "ZOMO čl. 48.", "Od 1.1.2026."],
-    ["AVM usklađivanje", "Swiss index: 85% × ΔIBP + 15% × ΔIPC (ili obrnuto)", "ZOMO 2025, čl. 82.", "2× godišnje"],
+    ["AVM usklađivanje", "Prema rastu plaća i potrošačkih cijena", "ZOMO čl. 91.", "1.1. i 1.7."],
     ["II. stup — akumulacija", "FV = PMT × [((1+r_mj)^n_mj − 1) / r_mj]", "ZOMF", "Geometrijska renta"],
     ["II. stup — doprinos", "5% bruto plaće na osobni račun", "Zakon o doprinosima", "Uplaćuje poslodavac"],
-    ["II. stup — naknade OMF", "Max 0,24% god. imovine fonda (2025.)", "HANFA propis", "Pada do 0,20% od 2029."],
+    ["II. stup — naknade OMF", "0,23% god. imovine fonda (2026.)", "ZOMF", "Pada do 0,20% od 2029."],
     ["III. stup — DPS", "DPS = 15% × god. uplate, max 99,54 EUR/god.", "ZDOBF čl. 135.", ""],
     ["III. stup — poslodavac", "Max 804 EUR/god. neoporezivo", "Zakon o porezu na dohodak", "Beneficija za zaposlenika"],
     [],
     ["AVM POVIJEST"],
     ["Datum", "AVM (EUR)", "Promjena"],
     ["1.7.2025.", xlCell(14.45, { fmt: "#,##0.00" }), "+6,48%"],
+    ["1.1.2026.", xlCell(14.84, { fmt: "#,##0.00" }), "+2,68%"],
+    ["1.7.2026.", xlCell(15.64, { fmt: "#,##0.00" }), "+5,40%"],
     ["1.1.2025.", xlCell(13.57, { fmt: "#,##0.00" }), "+3,03%"],
     ["1.7.2024.", xlCell(13.17, { fmt: "#,##0.00" }), ""],
     ["1.1.2024.", xlCell(12.34, { fmt: "#,##0.00" }), ""],
@@ -404,7 +477,7 @@ const PDF_DISCLAIMER =
   "Ovo je informativni izračun generiran neovisnim alatom Mirovinski Sustav HR i ne predstavlja " +
   "službeni izračun mirovine niti obvezujući dokument. Za točan i pravno valjan izračun obratite se " +
   "HZMO-u (mirovinsko.hr) odnosno za II./III. stup HANFA-i (hanfa.hr) ili na mojamirovina.hr. " +
-  "Korišteni podaci i formule temelje se na ZOMO/ZOMF/ZDOBF te AVM = 14,45 EUR (od 1.7.2025.) i podložni su promjenama.";
+  "Korišteni podaci i formule temelje se na ZOMO/ZOMF/ZDOBF te AVM = 15,64 EUR (od 1.7.2026.) i podložni su promjenama.";
 
 // Roboto (latin + latin-ext) — uključuje sva hrvatska slova (č, ć, š, ž, đ)
 let _pdfFontsPromise = null;
@@ -521,26 +594,26 @@ const BLOG_POSTS = [
     tags: ["II. stup", "OMF", "kapitalizacija"],
     content: `## Što je II. mirovinski stup?
 
-Od 2002. godine svaki zaposlenik u Hrvatskoj obvezno uplaćuje **5% bruto plaće** na osobni račun u Obveznom mirovinskom fondu (OMF). Ova sredstva nisu zajednička — vaša su osobna imovina, naslijediva i odvojena od državnog proračuna.
+Od 2002. godine zaposleni koji su u II. stupu (obvezno svi koji su tada bili mlađi od 40 i svi kasnije zaposleni) uplaćuju **5% bruto plaće** na osobni račun u Obveznom mirovinskom fondu (OMF). Ova sredstva nisu zajednička — vaša su osobna imovina, naslijediva i odvojena od državnog proračuna.
 
 ## Kako raste vaš kapital?
 
-OMF ulaže vaše uplate u financijske instrumente (obveznice, dionice, nekretninski fondovi). Prinos nije zajamčen, ali prosječni prinos hr. OMF-ova od 2002. do 2024. bio je **5–7% godišnje**.
+OMF ulaže vaše uplate u financijske instrumente (obveznice, dionice, nekretninski fondovi). Prinos nije zajamčen; dugoročni prosječni prinos OMF-ova kreće se oko **5% godišnje** (Hanfa).
 
 Formula akumulacije:
 > **FV = PMT × [((1 + r_mj)^n − 1) / r_mj]**
 
 gdje je PMT = mjesečna uplata, r_mj = neto prinos/12, n = broj mjeseci.
 
-**Primjer:** Osoba s prosječnom bruto plaćom 1.300 EUR, koja štedi 33 godine uz 5,5% neto prinos, akumulira **~95.000 EUR**.
+**Primjer:** Osoba s prosječnom bruto plaćom 2.016 EUR, koja štedi 33 godine uz 5,5% neto prinos, akumulira **~112.500 EUR**.
 
 ## Naknade koje ne vidite
 
 Svake godine OMF naplaćuje naknadu za upravljanje. HANFA propisuje:
-- 2025.: **0,24%** godišnje od ukupne imovine fonda
+- 2026.: **0,23%** godišnje od ukupne imovine fonda (2027.: 0,22%)
 - 2029. i dalje: **0,20%**
 
-Na 33 godine štednje, razlika između 3% i 7% prinosa na kapital od 1.300 EUR/mj. = razlika **~65.000 EUR** u akumuliranom kapitalu.
+Na 33 godine štednje, razlika između 3% i 7% prinosa uz plaću od 2.016 EUR/mj. = razlika **~87.000 EUR** u akumuliranom kapitalu.
 
 ## Što čuvaju za vas?
 
@@ -612,7 +685,7 @@ Okvirno smanjenje rente: **15–25%** u odnosu na standardnu doživotnu rentu.
 
 1. Regulatorni okvir (ZOMF) zahtijeva od MOD-ova da garantiraju doživotnu isplatu
 2. MOD mora imati tehničke pričuve > 100% obveza u svakom trenutku
-3. Nema tržišnog pritiska — 4 MOD-a, limitirana konkurencija`
+3. Malo tržišne konkurencije — samo 2 MOD-a`
   },
   {
     id: 4, slug: "pvb-sto-je-i-zasto-je-vazan",
@@ -648,7 +721,7 @@ Osoba s PVB 1,5 dobiva **50% veću mirovinu** od osobe s PVB 1,0 — uz isti sta
   {
     id: 5, slug: "prijevremena-mirovina-cijena",
     title: "Prijevremena mirovina: koliko košta svaki rani odlazak?",
-    excerpt: "Za svaki mjesec ranijeg odlaska u mirovinu, polazni faktor se trajno smanjuje za 0,2%. Na 36 mjeseci to je 7,2% — zauvijek.",
+    excerpt: "Za svaki mjesec ranijeg odlaska u mirovinu polazni faktor se smanjuje za 0,2 %. Na 36 mjeseci to je 7,2 % manja mirovina sve do 70. godine.",
     category: "Strategija", readMin: 7, date: "2025-09-25",
     tags: ["prijevremena mirovina", "polazni faktor", "strategija"],
     content: `## Kazna za rani odlazak
@@ -659,7 +732,7 @@ Za svaki **mjesec** ranijeg odlaska u mirovinu (u odnosu na zakonsku dob), polaz
 
 ## Primjeri
 
-| Rani odlazak | PF | Trajno smanjenje mirovine |
+| Rani odlazak | PF | Smanjenje mirovine (do 70. god.) |
 |---|---|---|
 | 6 mj. | 0,988 | −1,2% |
 | 12 mj. | 0,976 | −2,4% |
@@ -670,7 +743,7 @@ Za svaki **mjesec** ranijeg odlaska u mirovinu (u odnosu na zakonsku dob), polaz
 ## Puna mirovinska dob 2025.
 
 Muškarci: **65 godina**
-Žene (2025.): **63 god. i 9 mj.** (prijelazno razdoblje do 2030.)
+Žene: **64 god.** u 2026., zatim +3 mj. godišnje do 65 god. u 2030.
 
 ## Odgoda mirovine = nagrada
 
@@ -733,6 +806,31 @@ function Card({ children, style = {}, className = "", ...rest }) {
       boxShadow: "0 2px 16px rgba(26,46,82,0.07)", border: `1px solid ${C.border}`,
       ...style
     }} {...rest}>{children}</div>
+  );
+}
+
+function Ukratko({ children, color = C.blue }) {
+  return (
+    <div style={{ marginBottom: 18, padding: "14px 18px", background: C.white, borderRadius: 12,
+      borderLeft: `5px solid ${color}`, boxShadow: "0 2px 10px rgba(26,46,82,0.06)" }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Ukratko</div>
+      <div style={{ fontSize: 13, color: C.navy, lineHeight: 1.65 }}>{children}</div>
+    </div>
+  );
+}
+
+function Detalji({ naslov = "Detaljnije objašnjenje", children, otvoreno = false, style = {} }) {
+  const [open, setOpen] = useState(otvoreno);
+  return (
+    <div style={{ marginTop: 14, border: `1px solid ${C.border}`, borderRadius: 10, background: C.white, ...style }}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "10px 14px", background: "none", border: "none", fontSize: 13, fontWeight: 600, color: C.navy, textAlign: "left" }}>
+        <span>{naslov}</span>
+        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </button>
+      {open && <div style={{ padding: "0 14px 14px" }}>{children}</div>}
+    </div>
   );
 }
 
@@ -1178,10 +1276,53 @@ function FeedbackModal({ onClose }) {
   );
 }
 
+function NetoMirovinaBox({ bruto, napomena }) {
+  const [stopa, setStopa] = useState(0.20);
+  const t26 = calcNetoMirovina(bruto, { stopa });
+  const t27 = calcNetoMirovina(bruto, { stopa, godina: 2027 });
+  return (
+    <div style={{ marginTop: 12, padding: "12px 14px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.green }}>💶 Koliko ostaje na računu (neto)</div>
+        <label style={{ fontSize: 10, color: C.slate }}>
+          Stopa poreza vašeg grada:{" "}
+          <select value={stopa} onChange={e => setStopa(Number(e.target.value))} style={{ fontSize: 11, padding: "2px 4px", borderRadius: 4, border: `1px solid ${C.border}` }}>
+            {[0.15, 0.17, 0.18, 0.20, 0.21, 0.22, 0.23].map(v => <option key={v} value={v}>{Math.round(v * 100)} %</option>)}
+          </select>
+        </label>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Bruto</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{fmt(bruto)} EUR</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Neto 2026.</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{fmt(t26.neto)} EUR</div>
+          <div style={{ fontSize: 9, color: C.slateL }}>porez {fmt(t26.porezEfektivni)} EUR</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Neto od 2027.*</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{fmt(t27.neto)} EUR</div>
+          <div style={{ fontSize: 9, color: C.slateL }}>porez {fmt(t27.porezEfektivni)} EUR</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.6 }}>
+        Do {OSOBNI_ODBITAK} EUR mirovine porez se ne plaća (osobni odbitak). Na ostatak se obračunava porez po stopi vašeg
+        grada ili općine, a umirovljenici plaćaju samo pola tog iznosa. Prirez ne postoji od 2024.
+        {napomena}
+        <span style={{ display: "block", marginTop: 6, padding: "4px 8px", background: C.amberL, borderRadius: 6, color: C.amber, fontWeight: 600 }}>
+          * Vlada je u rujnu 2026. uputila Saboru prijedlog da se od 1.1.2027. ukine porez na mirovine (do 5.000 EUR osnovice). Iznos vrijedi ako prijedlog bude usvojen.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── STUP 1 KALKULATOR ───────────────────────────────────────────────────────
 function Stup1Calculator({ onSave, user, onAuthRequired }) {
   const [params, setParams] = useState({
-    staz: 40, pvb: 1.05, vrsta: "starosna",
+    staz: 40, pvb: 1.0, vrsta: "starosna",
     rani_odlazak_mj: 0, odgoda_mj: 0, mf: 1.0, avm: AVM,
     spol: "M", dob_umirovljenja: 65,
   });
@@ -1197,16 +1338,17 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
   const mf = params.vrsta === "starosna" ? 1.0
     : params.vrsta === "prijevremena" ? 1.0
     : params.vrsta === "invalidska_potpuna" ? 1.1
-    : params.vrsta === "invalidska_djelomicna" ? 0.9 : 0.77;
+    : params.vrsta === "invalidska_djelomicna" ? 0.9 : 1.0;
 
   const res = calcStup1({ pvb: params.pvb, staz: params.staz, pf, mf, avm: params.avm });
+  const sd = saDodatkom(res);
 
   const cmp_data = [
-    { name: "Prijevremena (-36 mj.)", value: calcStup1({ pvb: params.pvb, staz: Math.max(1, params.staz - 3), pf: 1 - 0.002 * 36, mf: 1.0, avm: params.avm }).efektivna },
-    { name: "Standardna (puna dob)", value: calcStup1({ pvb: params.pvb, staz: params.staz, pf: 1.0, mf: 1.0, avm: params.avm }).efektivna },
-    { name: "Vaš scenarij", value: res.efektivna },
-    { name: "Odgoda (+24 mj.)", value: calcStup1({ pvb: params.pvb, staz: params.staz + 2, pf: 1 + 0.0045 * 24, mf: 1.0, avm: params.avm }).efektivna },
-    { name: "Odgoda (+48 mj.)", value: calcStup1({ pvb: params.pvb, staz: params.staz + 4, pf: 1 + 0.0045 * 48, mf: 1.0, avm: params.avm }).efektivna },
+    { name: "Prijevremena (-36 mj.)", value: saDodatkom(calcStup1({ pvb: params.pvb, staz: Math.max(1, params.staz - 3), pf: 1 - 0.002 * 36, mf: 1.0, avm: params.avm })).ukupno },
+    { name: "Standardna (puna dob)", value: saDodatkom(calcStup1({ pvb: params.pvb, staz: params.staz, pf: 1.0, mf: 1.0, avm: params.avm })).ukupno },
+    { name: "Vaš scenarij", value: sd.ukupno },
+    { name: "Odgoda (+24 mj.)", value: saDodatkom(calcStup1({ pvb: params.pvb, staz: params.staz + 2, pf: 1 + 0.0045 * 24, mf: 1.0, avm: params.avm })).ukupno },
+    { name: "Odgoda (+48 mj.)", value: saDodatkom(calcStup1({ pvb: params.pvb, staz: params.staz + 4, pf: 1 + 0.0045 * 48, mf: 1.0, avm: params.avm })).ukupno },
   ];
 
   async function handleSave() {
@@ -1236,13 +1378,14 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
         ["Bruto mirovina", `${fmt(res.bruto)} EUR`],
         ["Najniža mirovina", `${fmt(res.najniza)} EUR`],
         ["Najviša mirovina", `${fmt(res.najvisa)} EUR`],
-        ["Efektivna mirovina / mj.", `${fmt(res.efektivna)} EUR`],
-        ["Efektivna mirovina / god.", fmtEur(res.efektivna * 12)],
+        ["Mirovina iz formule (u granicama najniže/najviše)", `${fmt(res.efektivna)} EUR`],
+        ["Mirovina s dodatkom 27 % / mj.", `${fmt(sd.ukupno)} EUR`],
+        ["Mirovina s dodatkom 27 % / god.", fmtEur(sd.ukupno * 12)],
       ],
       formule: [
         `OB = PVB × Staž × PF = ${params.pvb.toFixed(2)} × ${params.staz} × ${pf.toFixed(3)} = ${res.ob.toFixed(3)}`,
-        `Bruto = OB × MF × AVM = ${res.ob.toFixed(3)} × ${mf} × ${params.avm.toFixed(2)} = ${fmt(res.bruto)} EUR`,
-        `Najniža = ${MIN_MIROVINA_FAKTOR} × AVM × Staž × PF = ${fmt(res.najniza)} EUR`,
+        `Bruto = OB × MF × AVM = ${res.ob.toFixed(3)} × ${mf.toFixed(2)} × ${params.avm.toFixed(2)} = ${fmt(res.bruto)} EUR`,
+        `Najniža = ${MIN_MIROVINA_FAKTOR} × AVM × Staž × PF × MF = ${fmt(res.najniza)} EUR`,
         `Najviša = Staž × ${MAX_VB} × PF × MF × AVM = ${fmt(res.najvisa)} EUR`,
         `Efektivna = MAX(Najniža, MIN(Najviša, Bruto)) = ${fmt(res.efektivna)} EUR`,
       ],
@@ -1283,7 +1426,8 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
                   { v: "starosna", emoji: "👴", l: "Starosna", sub: "Normalan odlazak u mirovinu po navršenju zakonske dobi" },
                   { v: "prijevremena", emoji: "🏃", l: "Prijevremena", sub: "Odlazak ranije — mirovina trajno manja" },
                   { v: "dugogodisnji", emoji: "⏳", l: "Dugogodišnji", sub: "60 god. + 41 god. staža — posebni uvjeti" },
-                  { v: "invalidska_potpuna", emoji: "⚕️", l: "Invalidska", sub: "Potpuni gubitak radne sposobnosti" },
+                  { v: "invalidska_potpuna", emoji: "⚕️", l: "Invalidska — potpuna", sub: "Potpuni gubitak radne sposobnosti (MF 1,1)" },
+                  { v: "invalidska_djelomicna", emoji: "🩺", l: "Invalidska — djelomična", sub: "Djelomični gubitak radne sposobnosti (MF 0,9)" },
                 ].map(o => (
                   <button key={o.v} onClick={() => setParams(p => ({ ...p, vrsta: o.v }))}
                     style={{ padding: "8px 10px", border: `2px solid ${params.vrsta === o.v ? C.navy : C.border}`,
@@ -1315,16 +1459,16 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
             dynamicExplain={v => {
               const yrs = Math.round(v);
               if (v < 15) return `⚠ S ${v} god. staža nema prava na starosnu mirovinu (minimum je 15 godina).`;
-              const est = (1.05 * v * 1.0 * 1.0 * AVM).toFixed(0);
-              return `S ${v} godina staža i prosječnom plaćom, vaša okvirna mirovina bila bi oko ${est} EUR/mj. — svaka dodatna godina staža povećava je za otprilike ${(1.05 * AVM).toFixed(0)} EUR/mj.`;
+              const est = (v * AVM).toFixed(0);
+              return `S ${v} godina staža i prosječnom plaćom (PVB 1,0) okvirna bruto mirovina iz I. stupa je oko ${est} EUR/mj. Svaka dodatna godina staža donosi oko ${AVM.toFixed(0)} EUR/mj. više.`;
             }}
             explain={
               <div>
                 <p><strong>Staž</strong> je ukupan broj godina koje ste proveli radeći i uplaćujući doprinose u mirovinski sustav.</p>
                 <p style={{ marginTop: 6 }}>Svaka godina staža direktno povećava mirovinu — u formuli je <em>M = PVB × <strong>Staž</strong> × PF × MF × AVM</em>, dakle što je staž veći, to je mirovina veća, linearno.</p>
-                <p style={{ marginTop: 6 }}>Vrijedi i vojni rok, bolovanje i porodiljni dopust. Staž se zbrajaju iz svih radnih odnosa u životu.</p>
+                <p style={{ marginTop: 6 }}>Računa se i vojni rok, bolovanje i rodiljni dopust. Staž se zbraja iz svih radnih odnosa u životu, a majkama se dodaje 12 mjeseci za svako dijete (od 1.7.2025.).</p>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.blueL, borderRadius: 6 }}>
-                  💡 <strong>Praktično:</strong> 5 dodatnih godina rada = oko 5 × {(1.05 * AVM).toFixed(0)} EUR više mirovine svaki mjesec, zauvijek.
+                  💡 <strong>Praktično:</strong> 5 dodatnih godina rada uz prosječnu plaću = oko {(5 * AVM).toFixed(0)} EUR bruto više mirovine svaki mjesec.
                 </div>
               </div>
             }
@@ -1345,7 +1489,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               { upTo: 3.8,  color: "#c00",   label: "Vrhunska plaća" },
             ]}
             dynamicExplain={v => {
-              const avgHR = 1300; // prosj. bruto HR 2024
+              const avgHR = PROSJ_BRUTO;
               const approxPlaca = Math.round(v * avgHR);
               if (v < 1.0) return `PVB ${v.toFixed(2)} znači da ste prosječno zarađivali oko ${approxPlaca} EUR bruto — ispod prosjeka RH (≈${avgHR} EUR). Svaki bod manje = manja mirovina razmjerno.`;
               if (v < 1.15) return `PVB ${v.toFixed(2)} ≈ prosječna plaća u RH (≈${approxPlaca} EUR bruto). Mirovina "pratila" je prosjek ekonomije.`;
@@ -1362,7 +1506,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
                 </ul>
                 <p style={{ marginTop: 8 }}>HZMO svake godine dijeli vašu plaću s prosječnom plaćom RH — to je godišnji vrijednosni bod. PVB je prosjek svih tih godišnjih bodova.</p>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.amberL, borderRadius: 6 }}>
-                  💡 <strong>Primjer:</strong> Zarađivali ste 1.950 EUR bruto, a prosjek RH bio 1.300 EUR → bod te godine = 1.500. Ako je to bio prosjek vaše karijere, PVB = 1,50.
+                  💡 <strong>Primjer:</strong> Zarađivali ste 3.024 EUR bruto, a prosjek RH bio 2.016 EUR → bod te godine = 1,50. Ako je to bio prosjek vaše karijere, PVB = 1,50.
                 </div>
               </div>
             }
@@ -1384,17 +1528,17 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               dynamicExplain={v => {
                 const pf_calc = Math.max(0.7, 1 - 0.002 * v);
                 const kazna = ((1 - pf_calc) * 100).toFixed(1);
-                return `Odlaskom ${v} mj. ranije, vaša mirovina je trajno manja za ${kazna}% — svaki mjesec do kraja života. Polazni faktor PF = ${pf_calc.toFixed(3)}.`;
+                return `Odlaskom ${v} mj. ranije mirovina je manja za ${kazna} % sve do 70. godine života, kada se smanjenje ukida. Polazni faktor PF = ${pf_calc.toFixed(3)}.`;
               }}
               explain={
                 <div>
                   <p>Za svaki <strong>mjesec ranijeg odlaska</strong> u mirovinu, mirovina se trajno smanjuje za <strong>0,2%</strong>.</p>
-                  <p style={{ marginTop: 6 }}>Ovo smanjenje je <em>trajno</em> — ne nadoknađuje se nikad. Formula: <em>PF = 1,00 − 0,002 × broj_mj</em>.</p>
+                  <p style={{ marginTop: 6 }}>Smanjenje vrijedi do navršene 70. godine života. Formula: <em>PF = 1,00 − 0,002 × broj mjeseci</em>. Uvjet za prijevremenu mirovinu u 2026.: muškarci 60 god. i 35 god. staža, žene 59 god. i 34 god. staža.</p>
                   <div style={{ marginTop: 8, padding: "6px 10px", background: C.redL, borderRadius: 6 }}>
-                    ⚠ <strong>Pažnja:</strong> 3 godine ranije = −7,2% mirovine zauvijek. Na 20 god. mirovine, to je ekvivalent 1,4 god. bez prihoda.
+                    ⚠ <strong>Pažnja:</strong> 3 godine ranije = −7,2 % mirovine sve do 70. godine (uz to i 3 godine staža manje).
                   </div>
                   <div style={{ marginTop: 8, padding: "6px 10px", background: C.greenL, borderRadius: 6 }}>
-                    ✅ <strong>Od 1.1.2026. (ZOMO čl. 77):</strong> korisnicima prijevremene mirovine koji navrše <strong>70 godina</strong>, Zavod po službenoj dužnosti ukida smanjenje PF-a od sljedećeg mjeseca.
+                    ✅ <strong>Od 1.1.2026. (ZOMO čl. 83.):</strong> kad korisnik prijevremene mirovine navrši <strong>70 godina</strong>, HZMO po službenoj dužnosti ukida smanjenje od sljedećeg mjeseca.
                   </div>
                 </div>
               }
@@ -1439,21 +1583,21 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
             onChange={v => setParams(p => ({ ...p, avm: v }))}
             zones={[
               { upTo: 13,   color: C.red,   label: "Ispod sadašnje razine" },
-              { upTo: 14.45,color: C.green, label: "Sadašnja razina (1.7.2025.)" },
+              { upTo: 15.64,color: C.green, label: `Sadašnja razina (${AVM_DATUM})` },
               { upTo: 17,   color: C.blue,  label: "Projicirana buduća razina" },
               { upTo: 20,   color: C.purple,label: "Optimistična projekcija" },
             ]}
             dynamicExplain={v => {
-              if (Math.abs(v - AVM) < 0.02) return `AVM ${v.toFixed(2)} EUR — ovo je sadašnja vrijednost (od 1.7.2025.). Svaki vaš osobni bod vrijedi ${v.toFixed(2)} EUR mirovine.`;
+              if (Math.abs(v - AVM) < 0.02) return `AVM ${v.toFixed(2)} EUR — ovo je sadašnja vrijednost (od ${AVM_DATUM}). Svaki vaš osobni bod vrijedi ${v.toFixed(2)} EUR mirovine.`;
               const razlika = ((v - AVM) / AVM * 100).toFixed(1);
               return `AVM ${v.toFixed(2)} EUR = ${razlika > 0 ? '+' : ''}${razlika}% vs. sadašnja vrijednost. Ovim simulirate buduće usklađivanje AVM.`;
             }}
             explain={
               <div>
-                <p><strong>AVM (Aktualna vrijednost mirovine)</strong> je "cijena jednog boda". Određuje je Vlada RH i mijenja se dva puta godišnje sukladno indeksima plaća i cijena.</p>
+                <p><strong>AVM (aktualna vrijednost mirovine)</strong> je "cijena jednog boda". HZMO je usklađuje dva puta godišnje (1.1. i 1.7.) prema rastu plaća i cijena (ZOMO čl. 91.).</p>
                 <p style={{ marginTop: 6 }}>Vaša mirovina = <em>Osobni bodovi × AVM</em>. Ako AVM poraste za 5%, vaša mirovina poraste za 5%.</p>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.blueL, borderRadius: 6 }}>
-                  💡 Sadašnja vrijednost: <strong>14,45 EUR/bod</strong> (od 1.7.2025.). Promijenite ovaj slider da vidite kako bi mirovina izgledala u budućnosti s drugačijim AVM-om.
+                  💡 Sadašnja vrijednost: <strong>{fmt(AVM)} EUR/bod</strong> (od {AVM_DATUM}). Promijenite ovaj slider da vidite kako bi mirovina izgledala u budućnosti s drugačijim AVM-om.
                 </div>
               </div>
             }
@@ -1474,7 +1618,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               <div style={{ fontSize: 22, fontWeight: 800, color: mf === 1.0 ? "#7bffb0" : C.goldL,
                 fontFamily: "'Playfair Display', serif" }}>{mf.toFixed(2)}</div>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-                {mf === 1.0 ? "Puna mirovina" : `Smanjena (invalidska/obiteljska)`}
+                {mf === 1.0 ? "Puna mirovina" : mf > 1 ? "Uvećana (invalidska, potpuni gubitak)" : "Umanjena (invalidska, djelomični gubitak)"}
               </div>
             </div>
           </div>
@@ -1491,58 +1635,28 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
               <ResultBox label="Najviša mirovina" value={`${fmt(res.najvisa)} EUR`} color={C.slate} />
             </div>
             <div style={{ marginTop: 12 }}>
-              <ResultBox label="✅ Efektivna mirovina / mj." value={`${fmt(res.efektivna)} EUR`} color={C.green} big />
+              <ResultBox label="✅ Mirovina s dodatkom od 27 % / mj." value={`${fmt(sd.ukupno)} EUR`} color={C.green} big
+                sub={sd.najniza ? "isplaćuje se najniža mirovina" : `${fmt(sd.mirovina)} EUR + dodatak ${fmt(sd.dodatak)} EUR`} />
             </div>
             <div style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: C.slateL }}>
-              Godišnje: <strong>{fmtEur(res.efektivna * 12)}</strong>
+              Godišnje: <strong>{fmtEur(sd.ukupno * 12)}</strong>
+            </div>
+            <div style={{ marginTop: 10, padding: "8px 12px", background: C.purpleL, borderRadius: 8, fontSize: 11, color: C.slate, lineHeight: 1.6 }}>
+              Ovo je mirovina ako ste samo u I. stupu (ili pri umirovljenju izaberete samo I. stup). Ako ste u II. stupu i izaberete
+              mirovinu iz oba stupa, dio iz I. stupa je niži, ali dobivate i mirovinu iz II. stupa. Usporedbu radi kalkulator „Samo I. ili I. + II.“.
             </div>
             <div style={{ marginTop: 12, padding: "10px 12px", background: C.bg, borderRadius: 8, fontSize: 11, color: C.slate, lineHeight: 1.6 }}>
-              <strong>📐 Najviša mirovina (zakonski maksimum):</strong> "Najviša mirovina" = Staž × {MAX_VB} × PF × MF × AVM
-              — to je apsolutni gornji limit za vaš staž, jer prosječni vrijednosni bod (PVB) po zakonu ne može
-              premašiti {MAX_VB}. Vaš PVB je {params.pvb.toFixed(2)}, što znači da je vaša bruto mirovina na{" "}
-              <strong>{pct(params.pvb / MAX_VB)}</strong> ovog maksimuma — bruto mirovina je{" "}
+              <strong>📐 Najniža i najviša mirovina:</strong> zakon jamči najmanje {fmt(res.najniza)} EUR za vaš staž
+              ({fmt(MIN_MIROVINA_FAKTOR * params.avm)} EUR po godini staža) i ograničava mirovinu na najviše {fmt(res.najvisa)} EUR
+              (kao da ste cijeli radni vijek zarađivali {String(MAX_VB).replace(".", ",")} prosječne plaće).{" "}
               {res.bruto >= res.najvisa
-                ? <>jednaka maksimumu, pa je efektivna mirovina <strong>ograničena (capped)</strong> na {fmt(res.najvisa)} EUR.</>
-                : <>ispod maksimuma, pa <strong>nije ograničena</strong> najvišim iznosom — najviša mirovina ovdje služi
-                    samo kao referentna gornja granica.</>}
-              {res.bruto < res.najniza && <> Napomena: bruto mirovina je ispod zakonskog minimuma, pa je efektivna
-                mirovina podignuta na najnižu mirovinu od {fmt(res.najniza)} EUR.</>}
+                ? <>Vaš izračun premašuje gornju granicu, pa se isplaćuje <strong>najviša mirovina</strong>.</>
+                : res.bruto < res.najniza
+                  ? <>Vaš izračun je ispod donje granice, pa se isplaćuje <strong>najniža mirovina</strong>.</>
+                  : <>Vaš izračun je između tih granica, pa se isplaćuje točno izračunani iznos.</>}
             </div>
 
-            {/* Neto mirovina */}
-            {(() => {
-              const t = calcNetoMirovina(res.efektivna);
-              return (
-                <div style={{ marginTop: 12, padding: "12px 14px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 8 }}>💶 Aproksimacija neto mirovine (na račun)</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Bruto mirovina</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{fmt(res.efektivna)} EUR</div>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>Porez na dohodak</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: t.porezEfektivni > 0 ? C.red : C.green }}>
-                        {t.porezEfektivni > 0 ? `−${fmt(t.porezEfektivni)} EUR` : "0,00 EUR"}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 10, color: C.slateL, marginBottom: 2 }}>≈ Neto (bez prireza)</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{fmt(t.neto)} EUR</div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 10, color: C.slate, lineHeight: 1.6 }}>
-                    {t.osnovica <= 0
-                      ? <>Mirovina ≤ {OSOBNI_ODBITAK} EUR — u cijelosti pokrivena osobnim odbitkom, <strong>porez = 0</strong>.</>
-                      : <>Osobni odbitak: {OSOBNI_ODBITAK} EUR/mj. · Porezna osnovica: {fmt(t.osnovica)} EUR · Porez (bruto {fmt(t.porezBruto)} EUR) × <strong>50% halviranje</strong> za mirovine = {fmt(t.porezEfektivni)} EUR. Prirez (po JLS) nije uključen.</>
-                    }
-                    <span style={{ display: "block", marginTop: 6, padding: "4px 8px", background: C.amberL, borderRadius: 6, color: C.amber, fontWeight: 600 }}>
-                      ⏳ Od 1.1.2027. porez na dohodak od mirovina se ukida (najava Vlade RH).
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
+            <NetoMirovinaBox bruto={sd.ukupno} />
           </Card>
 
           <Card>
@@ -1593,8 +1707,8 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
             ["Osobni bodovi", `OB = ${params.pvb.toFixed(2)} × ${params.staz} × ${pf.toFixed(3)} = ${res.ob.toFixed(3)}`],
-            ["Bruto mirovina", `${res.ob.toFixed(3)} × ${mf} × ${params.avm} = ${fmt(res.bruto)} EUR`],
-            ["Najniža mirovina", `${MIN_MIROVINA_FAKTOR} × ${params.avm} × ${params.staz} × ${pf.toFixed(3)} = ${fmt(res.najniza)} EUR`],
+            ["Bruto mirovina", `${res.ob.toFixed(3)} × ${mf.toFixed(2)} × ${params.avm.toFixed(2)} = ${fmt(res.bruto)} EUR`],
+            ["Najniža mirovina", `${MIN_MIROVINA_FAKTOR} × ${params.avm.toFixed(2)} × ${params.staz} × ${pf.toFixed(3)} × ${mf.toFixed(2)} = ${fmt(res.najniza)} EUR`],
           ].map(([k, v]) => (
             <div key={k} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px" }}>
               <div style={{ fontSize: 11, color: C.goldL, marginBottom: 4 }}>{k}</div>
@@ -1610,7 +1724,7 @@ function Stup1Calculator({ onSave, user, onAuthRequired }) {
 // ─── STUP 2 KALKULATOR ───────────────────────────────────────────────────────
 function Stup2Calculator({ onSave, user, onAuthRequired }) {
   const [params, setParams] = useState({
-    bruto_placa: 1300, god_stednje: 33,
+    bruto_placa: PROSJ_BRUTO, god_stednje: 33,
     neto_prinos: 0.055, e65: 18,
     jednokratni_pct: 0.20,
     zomf_varijanta: "standard",
@@ -1683,9 +1797,9 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
     const obiteljska = v.key.startsWith("obiteljska");
     const nasljedstvo_kratko = v.garancija_god
       ? (obiteljska
-          ? (nasljedstvo > 0 ? `Bračni drug doživotno + ${fmt(nasljedstvo)} EUR (ostatak jamstva)` : `Bračni drug doživotno (jamstvo ${v.garancija_god} g. ≤ pretp. trajanje)`)
-          : (nasljedstvo > 0 ? `${fmt(nasljedstvo)} EUR (ostatak jamstva)` : `Ništa (jamstvo ${v.garancija_god} g. ≤ pretp. trajanje)`))
-      : (obiteljska ? "Nastavlja se bračnom drugu doživotno" : "Ništa — isplata prestaje");
+          ? `Bračnom drugu doživotno; ako i on umre u prvih ${v.garancija_god} god., ostatak prima imenovana osoba`
+          : `Ako umrete u prvih ${v.garancija_god} god., ostatak tog razdoblja prima imenovana osoba`)
+      : (obiteljska ? "Nastavlja se bračnom drugu doživotno" : "Isplata prestaje");
     return {
       ...v, ukupno_zivot, nasljedstvo, ukupna_vrijednost, nasljedstvo_kratko,
       razlika_kapital: ukupna_vrijednost - kapital,
@@ -1694,8 +1808,6 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
     };
   });
 
-  const najbolja = varijante_stvarne.reduce((a, b) => b.ukupna_vrijednost > a.ukupna_vrijednost ? b : a);
-  const najbolja_dcf = varijante_stvarne.reduce((a, b) => b.dcf_ukupna_vrijednost > a.dcf_ukupna_vrijednost ? b : a);
   const varijanta_odabrana = varijante_stvarne.find(v => v.key === params.zomf_varijanta) || varijante_stvarne[0];
 
   // Život od kamata (5% pravilo) — koliko kapitala treba da se živi samo od prinosa, bez trošenja glavnice
@@ -1715,7 +1827,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
     const scenario = {
       id: Date.now(), naziv, created: Date.now(),
       stup2: { ...params },
-      stup1: { pvb: 1.05, staz: 40, pf: 1.0, mf: 1.0, avm: AVM },
+      stup1: { pvb: params.bruto_placa / PROSJ_BRUTO, staz: 40, pf: 1.0, mf: 1.0, avm: AVM },
     };
     const existing = (await stGet(`scenarios:${user.email}`)) || [];
     await stSet(`scenarios:${user.email}`, [...existing, scenario]);
@@ -1737,7 +1849,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
         [`Doživotna renta — ${varijanta_odabrana.l}`, `${fmt(varijanta_odabrana.renta)} EUR`],
       ],
       formule: [
-        `Kapital (FV) = PMT × [((1+r)^n − 1) / r], PMT = bruto × 5% / 12, r = ${(params.neto_prinos*100).toFixed(1)}%/12, n = ${params.god_stednje}×12 = ${fmt(kapital)} EUR`,
+        `Kapital (FV) = PMT × [((1+r)^n − 1) / r], PMT = mjesečna bruto plaća × 5%, r = ${(params.neto_prinos*100).toFixed(1)}%/12, n = ${params.god_stednje}×12 = ${fmt(kapital)} EUR`,
         `Jednokratna isplata = Kapital × ${Math.round(params.jednokratni_pct*100)}% = ${fmt(jednokratni_iznos)} EUR`,
         `Doživotna renta ≈ Preostali kapital / (e₆₅ × 12) = ${fmt(preostali)} / (${params.e65} × 12) = ${fmt(renta_standard)} EUR/mj.`,
         varijanta_odabrana.key !== "standard"
@@ -1766,10 +1878,10 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             format={v => `${v.toLocaleString("hr-HR")} EUR/mj.`}
             onChange={v => setParams(p => ({ ...p, bruto_placa: v }))}
             zones={[
-              { upTo: 799,  color: C.red,    label: "Ispod minimalne plaće" },
-              { upTo: 1099, color: C.amber,  label: "Niža plaća" },
-              { upTo: 1399, color: C.green,  label: "Blizu prosjeka RH" },
-              { upTo: 2199, color: C.blue,   label: "Iznad prosjeka" },
+              { upTo: 1049, color: C.red,    label: "Ispod minimalne plaće (1.050 EUR)" },
+              { upTo: 1699, color: C.amber,  label: "Ispod prosjeka" },
+              { upTo: 2299, color: C.green,  label: "Oko prosjeka RH (2.016 EUR)" },
+              { upTo: 3499, color: C.blue,   label: "Iznad prosjeka" },
               { upTo: 5000, color: C.purple, label: "Visoka plaća" },
             ]}
             dynamicExplain={v => {
@@ -1779,9 +1891,9 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             explain={
               <div>
                 <p>Svaki mjesec, od vaše bruto plaće, <strong>5% ide na vaš osobni račun</strong> u Obveznom mirovinskom fondu (OMF). To su vaša osobna sredstva — nitko ih ne može uzeti.</p>
-                <p style={{ marginTop: 6 }}>Uplaćuje <em>poslodavac</em> na osnovi zakona. Vi tu uplatu ne vidite direktno na plaći, ali ona se akumulira na vašem osobnom računu i raste s prinosima fonda.</p>
+                <p style={{ marginTop: 6 }}>Taj doprinos uplaćuje poslodavac iz vaše bruto plaće (vidljiv je na platnoj listi). Stanje računa možete provjeriti na regos.hr ili u e-Građanima.</p>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.purpleL, borderRadius: 6 }}>
-                  💡 <strong>Praktično:</strong> Pri plaći 1.300 EUR bruto = 65 EUR/mj. → 780 EUR/god. → na 33 godine uz 5,5% prinos = ~95.000 EUR kapitala.
+                  💡 <strong>Praktično:</strong> Pri plaći 2.016 EUR bruto = ~101 EUR/mj. → ~1.210 EUR/god. → na 33 godine uz 5,5% prinos = ~112.500 EUR kapitala.
                 </div>
               </div>
             }
@@ -1830,18 +1942,18 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
               const k_real = calcStup2FV({ ...params, neto_prinos: v });
               const k_0 = params.bruto_placa * 0.05 * params.god_stednje * 12;
               const prinos_eur = k_real - k_0;
-              return `Uz ${(v*100).toFixed(1)}% prinos, kamate bi donijele ${fmt(prinos_eur)} EUR dodatno — to je ${Math.round(prinos_eur/k_0*100)}% više od pukih uplata. Naknada OMF (0,24%/god.) već je oduzeta.`;
+              return `Uz ${(v*100).toFixed(1)}% prinos, kamate bi donijele ${fmt(prinos_eur)} EUR dodatno — to je ${Math.round(prinos_eur/k_0*100)}% više od pukih uplata. Naknada OMF (0,23 %/god. u 2026.) već je oduzeta.`;
             }}
             explain={
               <div>
-                <p>OMF ulaže vaša sredstva u obveznice, dionice i nekretnine. Prinos <strong>nije zajamčen</strong>, ali HZMO propisuje minimalne standarde zaštite.</p>
+                <p>OMF ulaže vaša sredstva u obveznice, dionice i druge oblike imovine. Prinos <strong>nije zajamčen</strong>. Pravila ulaganja propisuje Zakon o obveznim mirovinskim fondovima, a fondove nadzire Hanfa.</p>
                 <ul style={{ marginTop: 8, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 4 }}>
                   <li><strong>3,5%</strong> — konzervativna pretpostavka (loši uvjeti na tržištu)</li>
-                  <li><strong>5,5%</strong> — prosjek HR OMF-ova 2002.–2024.</li>
+                  <li><strong>5,5%</strong> — umjerena pretpostavka, blizu dugoročnog prosjeka OMF-ova</li>
                   <li><strong>7,5%</strong> — optimistično (dobra tržišna kretanja)</li>
                 </ul>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.amberL, borderRadius: 6 }}>
-                  ⚠ Razlika između 3,5% i 7,5% na 33 god. štednje = <strong>više od 60.000 EUR</strong> razlike u kapitalu pri plaći 1.300 EUR.
+                  ⚠ Razlika između 3,5% i 7,5% na 33 god. štednje = <strong>oko 99.000 EUR</strong> razlike u kapitalu pri plaći 2.016 EUR.
                 </div>
               </div>
             }
@@ -1863,12 +1975,12 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
               const jednokr = (kapital * v).toFixed(0);
               const preost = (kapital * (1-v)).toFixed(0);
               if (v === 0) return `Sav akumulirani kapital (${fmt(kapital)} EUR) ide u doživotnu rentu.`;
-              return `Jednokratno primite ${fmt(Number(jednokr))} EUR odmah. Preostalih ${fmt(Number(preost))} EUR pretvara se u doživotnu rentu. ⚠ MOD obračunava porez na dohodak pri isplati.`;
+              return `Jednokratno primite ${fmt(Number(jednokr))} EUR odmah. Preostalih ${fmt(Number(preost))} EUR pretvara se u doživotnu mirovinu.`;
             }}
             explain={
               <div>
                 <p>Zakonom je dopušteno podići <strong>do 20% akumuliranog kapitala</strong> jednokratno pri umirovljenju — ali samo ako je vaša mirovina iz I. stupa veća od 115% najniže mirovine.</p>
-                <p style={{ marginTop: 6 }}>To su vaši novci — možete ih iskoristiti kako želite (renovacija, otplata kredita, putovanje…). Na taj iznos platite porez na dohodak.</p>
+                <p style={{ marginTop: 6 }}>Novac možete iskoristiti kako želite (npr. otplata kredita). Manje podignuto jednokratno znači višu doživotnu mirovinu.</p>
                 <p style={{ marginTop: 6 }}>Preostali kapital (80%+) pretvara se u doživotnu rentu kod MOD-a.</p>
               </div>
             }
@@ -1893,11 +2005,11 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
               <div>
                 <p>MOD izračunava rentu na temelju <strong>aktuarskih tablica</strong> — statističkih podataka o očekivanom životnom vijeku. Što dulje prosječno živite, to je renta niža (jer MOD mora isplaćivati dulje).</p>
                 <ul style={{ marginTop: 8, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <li><strong>HR muškarci</strong> u dobi 65: prosj. još ~17–19 god. (do ~84)</li>
-                  <li><strong>HR žene</strong> u dobi 65: prosj. još ~20–22 god. (do ~86)</li>
+                  <li><strong>Muškarci</strong> u dobi 65: prosječno još oko 16 godina (DZS)</li>
+                  <li><strong>Žene</strong> u dobi 65: prosječno još oko 20 godina (DZS)</li>
                 </ul>
                 <div style={{ marginTop: 8, padding: "6px 10px", background: C.blueL, borderRadius: 6 }}>
-                  💡 Ovo je aproksimacija. MOD koristi vlastite aktuarske tablice i uzima u obzir spol, dob i odabrani tip rente.
+                  💡 Izračun ne uključuje prinos tijekom isplate, pa je okvirna mirovina nešto niža od stvarne. MOD koristi vlastite aktuarske tablice.
                 </div>
               </div>
             }
@@ -1909,8 +2021,8 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <span style={{ fontSize: 18 }}>🏛</span>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>ZOMF opcije isplate</div>
-                  <div style={{ fontSize: 10, color: C.green, opacity: 0.8 }}>Stvarne opcije doživotne rente iz II. stupa</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Vrsta mirovine u MOD-u</div>
+                  <div style={{ fontSize: 10, color: C.green, opacity: 0.8 }}>Odaberite da vidite okvirni iznos</div>
                 </div>
               </div>
               {[
@@ -1947,7 +2059,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>Akumulirani kapital</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               <ResultBox label="Ukupni kapital" value={`${fmt(kapital)} EUR`} color={C.purple} big />
-              <ResultBox label="Neto uplate (bez prinosa)" value={`${fmt(params.bruto_placa * 0.05 * params.god_stednje * 12)} EUR`} color={C.slate} />
+              <ResultBox label="Ukupno uplaćeno (bez prinosa)" value={`${fmt(params.bruto_placa * 0.05 * params.god_stednje * 12)} EUR`} color={C.slate} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <ResultBox label={`Jednokratna isplata (${Math.round(params.jednokratni_pct*100)}%)`}
@@ -1961,7 +2073,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             <ResultBox label="Renta / mj." value={`${fmt(varijanta_odabrana.renta)} EUR`} color={C.green} big />
             <div style={{ marginTop: 10, fontSize: 11, color: C.slateL }}>
               {varijanta_odabrana.key === "standard"
-                ? "Aproksimacija: Kapital / (e₆₅ × 12). MOD koristi vlastite aktuarske tablice."
+                ? "Okvirni izračun: kapital podijeljen s očekivanim brojem mjeseci isplate. Stvarni iznos izračunava MOD."
                 : `${varijanta_odabrana.sub} Stvarni iznos utvrđuje MOD aktuarskim izračunom prema dobi, spolu i (za obiteljske varijante) dobi bračnog druga.`}
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: C.green, background: C.greenL, padding: "8px 12px", borderRadius: 8 }}>
@@ -1970,7 +2082,7 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
           </Card>
 
           <Card>
-            <h3 style={{ fontSize: 13, marginBottom: 12 }}>Usporedba ZOMF opcija isplate</h3>
+            <h3 style={{ fontSize: 13, marginBottom: 12 }}>Usporedba vrsta mirovine (okvirno)</h3>
             <ResponsiveContainer width="100%" height={190}>
               <BarChart data={varijante_stvarne.map(v => ({ name: v.short, renta: v.renta, key: v.key }))} margin={{ top: 5, right: 10, bottom: 50, left: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-30} textAnchor="end" interval={0} />
@@ -2026,213 +2138,80 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
         </ResponsiveContainer>
       </Card>
 
-      {/* Stvarne opcije isplate (ZOMF) */}
+      {/* Kako odabrati vrstu mirovine u MOD-u */}
       <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Stvarne opcije isplate II. stupa (ZOMF)</h3>
-        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Pri umirovljenju, preostali kapital ({fmt(preostali)} EUR) MOD pretvara u jedan od ovih oblika doživotne
-          rente. Svih 6 varijanti u nastavku — 2 osnovna modela (pojedinačna / obiteljska) × 3 razine jamstva isplate
-          (bez jamstva, 5 god., 10 god.) — stvarno postoje u hrvatskom zakonodavnom okviru (ZOMF) i svaki MOD ih je
-          dužan ponuditi. Razlikuju se po tome kome, koliko dugo i u kojem iznosu se renta isplaćuje, te u kojim
-          slučajevima nakon smrti korisnika nešto ostaje nasljednicima.
+        <h3 style={{ fontSize: 15, marginBottom: 6 }}>Koju vrstu mirovine odabrati u MOD-u?</h3>
+        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 12, lineHeight: 1.6 }}>
+          Pri umirovljenju kapital ({fmt(preostali)} EUR nakon jednokratne isplate) prelazi u mirovinsko osiguravajuće društvo (MOD),
+          koje vam doživotno isplaćuje mirovinu. U Hrvatskoj trenutno posluju dva MOD-a (Hrvatski MOD i Raiffeisen MOD). Odluka je trajna.
         </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 14 }}>
+          {[
+            { t: "Pojedinačna", c: C.blue, d: "Najviša mjesečna isplata. Isplata prestaje vašom smrću.", kada: "Kad nemate bračnog druga koji ovisi o vašoj mirovini." },
+            { t: "Obiteljska (zajednička)", c: C.green, d: "Niža isplata, ali se nakon vaše smrti nastavlja bračnom drugu doživotno.", kada: "Kad bi bračni drug bez vaše mirovine teško živio." },
+            { t: "Sa zajamčenim razdobljem", c: C.gold, d: "Ako umrete u prvih 5 ili 10 godina, ostatak tog razdoblja prima osoba koju odredite.", kada: "Kad želite zaštitu obitelji u slučaju rane smrti." },
+          ].map(o => (
+            <div key={o.t} style={{ padding: "12px 14px", borderRadius: 10, background: o.c + "10", border: `1.5px solid ${o.c}33` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: o.c, marginBottom: 4 }}>{o.t}</div>
+              <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.55, marginBottom: 6 }}>{o.d}</div>
+              <div style={{ fontSize: 11, color: C.navy }}><strong>Kada:</strong> {o.kada}</div>
+            </div>
+          ))}
+        </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 520 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                <th style={{ textAlign: "left", padding: "8px 10px" }}>Varijanta</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Renta / mj.</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Razlika vs. standard</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Primljeno do {65 + params.e65}. god.*</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Nakon smrti korisnika</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Ukupna vrijednost*</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>Razlika vs. uloženi kapital*</th>
+                <th style={{ textAlign: "left", padding: "8px 10px" }}>Vrsta mirovine</th>
+                <th style={{ textAlign: "right", padding: "8px 10px" }}>Okvirno / mj.</th>
+                <th style={{ textAlign: "left", padding: "8px 10px" }}>Nakon vaše smrti</th>
               </tr>
             </thead>
             <tbody>
               {varijante_stvarne.map(v => (
-                <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}`,
-                  background: v.key === najbolja.key ? C.greenL : "transparent" }}>
-                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>
-                    {v.key === najbolja.key ? "🏆 " : ""}{v.l}
-                  </td>
+                <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}`, background: v.key === params.zomf_varijanta ? C.greenL : "transparent" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>{v.short}</td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.renta)} EUR</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right",
-                    color: v.renta === renta_standard ? C.slateL : (v.renta > renta_standard ? C.green : C.red) }}>
-                    {v.renta === renta_standard ? "—" : `${v.renta > renta_standard ? "+" : ""}${fmt(v.renta - renta_standard)} EUR`}
-                  </td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmt(v.ukupno_zivot)} EUR</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 11 }}>
-                    {v.nasljedstvo_kratko}
-                  </td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.ukupna_vrijednost)} EUR</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700,
-                    color: v.razlika_kapital >= 0 ? C.green : C.red }}>
-                    {`${v.razlika_kapital >= 0 ? "+" : ""}${fmt(v.razlika_kapital)} EUR`}
-                  </td>
+                  <td style={{ padding: "8px 10px", color: C.slate }}>{v.nasljedstvo_kratko}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
-          * Procjena uz pretpostavku da primatelj živi {params.e65} god. nakon 65. (do {65 + params.e65}. god. života)
-          — vaša postavka "Preostali životni vijek". "Ukupna vrijednost" = jednokratna isplata ({fmt(jednokratni_iznos)} EUR)
-          + primljeno tijekom života + ono što nakon smrti korisnika ostaje nasljednicima/supružniku. "Razlika vs.
-          uloženi kapital" = Ukupna vrijednost − ukupni akumulirani kapital ({fmt(kapital)} EUR), nominalno (bez
-          diskontiranja — vidi DCF analizu ispod). Renta s garancijom i obiteljska renta su procjene — MOD utvrđuje
-          stvarni iznos prema aktuarskim tablicama, dobi i odabranom bračnom drugu.
+          Iznosi su okvirni: obiteljska i zajamčena varijanta procijenjene su kao 1,5–12 % niže od pojedinačne. Stvarni iznos
+          izračunava MOD prema vašoj dobi, spolu i dobi bračnog druga. Usporedite ponude oba MOD-a prije potpisa ugovora.
         </div>
-
-        <div style={{ marginTop: 14, padding: "12px 16px", background: C.blueL, borderRadius: 10, border: `1.5px solid ${C.blue}33` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>
-            Druge stvarne opcije (ne ovise o tipu rente)
-          </div>
+        <div style={{ marginTop: 12, padding: "12px 16px", background: C.blueL, borderRadius: 10, border: `1.5px solid ${C.blue}33` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>Važna pravila</div>
           <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-            <li><strong>Jednokratna isplata dijela kapitala</strong> (do 20%) — već uključena gore kroz postavku
-              "Jednokratna isplata" ({fmt(jednokratni_iznos)} EUR), dostupna samo ako je vaša I. stup mirovina iznad
-              115% najniže mirovine.</li>
-            <li><strong>Privremena starosna mirovina</strong> — ako u trenutku umirovljenja ne ispunjavate uvjete
-              za doživotnu rentu kod MOD-a (npr. prijevremeno umirovljenje), REGOS isplaćuje privremenu mirovinu iz
-              vašeg kapitala dok ne ispunite uvjete, nakon čega prelazite na jednu od rentnih opcija iz tablice.</li>
-            <li><strong>Isplata cijelog kapitala</strong> — ako je akumulirani kapital ispod zakonskog minimuma za
-              rentu, cijeli iznos isplaćuje se jednokratno ili se pripaja I. stupu (uvećava osnovicu).</li>
+            <li>Mirovina iz oba stupa moguća je samo ako je osnovna mirovina iz I. stupa veća od najniže mirovine.
+              Inače se mirovina određuje samo iz I. stupa.</li>
+            <li>Jednokratno možete podići do 20 % kapitala samo ako je osnovna mirovina iz I. stupa veća od 115 % najniže mirovine.</li>
+            <li>Umjesto mirovine iz oba stupa možete izabrati mirovinu samo iz I. stupa (sredstva II. stupa tada idu u državni proračun).
+              Usporedbu radi kalkulator „Samo I. ili I. + II.“.</li>
           </ul>
         </div>
       </Card>
 
       {/* Nasljeđivanje sredstava II. stupa */}
       <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Nasljeđivanje sredstava II. stupa — kada i koliko</h3>
-        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Pravo nasljednika na sredstva iz II. stupa ovisi prije svega o tome je li osiguranik umro <strong>prije</strong>{" "}
-          ili <strong>nakon</strong> pretvaranja kapitala u rentu kod MOD-a.
-        </p>
-
-        <div style={{ marginBottom: 14, padding: "12px 16px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}33` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 6 }}>
-            1. Smrt prije umirovljenja (faza štednje — kapital još nije pretvoren u rentu)
-          </div>
-          <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-            <li><strong>Ako obitelj (bračni drug, djeca) nema pravo na obiteljsku mirovinu</strong> prema općim
-              propisima — <strong>cijeli</strong> akumulirani kapital s osobnog računa u II. stupu nasljeđuje se po
-              pravilima nasljednog prava, jednako kao i druga imovina. Nasljednici dobivaju 100% sredstava.</li>
-            <li><strong>Ako obitelj ima pravo na obiteljsku mirovinu</strong>, a osiguranik je u trenutku smrti imao
-              55+ god. i 10+ god. staža osiguranja u II. stupu, te bi obiteljska mirovina izračunata iz I.+II. stupa
-              bila veća nego samo iz I. stupa — sredstva iz II. stupa se <strong>prenose u I. stup</strong> (HZMO) i
-              koriste za financiranje te (veće) obiteljske mirovine, umjesto izravne isplate nasljednicima.</li>
-          </ul>
-        </div>
-
-        <div style={{ marginBottom: 6, padding: "12px 16px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>
-            2. Smrt nakon umirovljenja (kapital je već pretvoren u rentu) — ovisi o odabranoj ZOMF varijanti
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                  <th style={{ textAlign: "left", padding: "6px 10px" }}>Varijanta</th>
-                  <th style={{ textAlign: "left", padding: "6px 10px" }}>Što se događa nakon smrti korisnika</th>
-                </tr>
-              </thead>
-              <tbody>
-                {varijante_stvarne.map(v => (
-                  <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: "6px 10px", fontWeight: 600, whiteSpace: "nowrap", verticalAlign: "top" }}>{v.l}</td>
-                    <td style={{ padding: "6px 10px", color: C.slate, lineHeight: 1.5 }}>{v.nasljedstvo_detalj}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
-          Ukratko: nasljednici <strong>nemaju pravo</strong> na sredstva iz već ugovorene rente osim (a) u
-          zajamčenom razdoblju kod varijanti s jamstvom, ako korisnik (i bračni drug, kod obiteljskih varijanti)
-          umre prije isteka tog razdoblja, ili (b) kod obiteljskih varijanti, dok je bračni drug još živ (renta mu
-          se nastavlja isplaćivati). Jednom isplaćena jednokratna isplata (do 20% kapitala) postaje osobna imovina
-          osiguranika i normalno se nasljeđuje neovisno o ovim pravilima.
-        </div>
+        <h3 style={{ fontSize: 15, marginBottom: 8 }}>Što nasljeđuje obitelj?</h3>
+        <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
+          <li><strong>Prije umirovljenja:</strong> sredstva na vašem osobnom računu u II. stupu nasljeđuju se kao i druga imovina.
+            Ako član obitelji ostvaruje obiteljsku mirovinu, može izabrati nasljeđivanje sredstava (tada mu se dio obiteljske
+            mirovine za staž od 2002. određuje kao osnovna mirovina) ili prijenos sredstava u I. stup i punu obiteljsku mirovinu.</li>
+          <li><strong>Nakon umirovljenja:</strong> sredstva se više ne nasljeđuju. Isplata se nastavlja samo bračnom drugu
+            (obiteljska varijanta) ili do kraja zajamčenog razdoblja (varijante s jamstvom).</li>
+          <li><strong>Jednokratna isplata</strong> (do 20 %) postaje vaš novac i nasljeđuje se normalno.</li>
+        </ul>
       </Card>
 
-      {/* DCF analiza — sadašnja vrijednost isplata */}
-      <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>DCF analiza — sadašnja vrijednost isplata</h3>
-        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Nominalna "Ukupna vrijednost" iz tablice iznad zbraja isplate primljene tijekom narednih {params.e65} godina
-          kao da su sve primljene danas — što nije realno, jer novac primljen za 10 ili 20 godina vrijedi manje od
-          novca primljenog danas. DCF (discounted cash flow) analiza diskontira sve buduće isplate na <strong>sadašnju
-          vrijednost</strong> uz stopu od <strong>{(DISCOUNT_R*100).toFixed(1)}% god.</strong> (vaša pretpostavka
-          "Neto prinos") i tako uspoređuje opcije isplate s uloženim kapitalom ({fmt(kapital)} EUR) na realnoj osnovi.
-        </p>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
-            <thead>
-              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                <th style={{ textAlign: "left", padding: "8px 10px" }}>Varijanta</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>DCF ukupna vrijednost*</th>
-                <th style={{ textAlign: "right", padding: "8px 10px" }}>DCF razlika vs. uloženi kapital*</th>
-              </tr>
-            </thead>
-            <tbody>
-              {varijante_stvarne.map(v => (
-                <tr key={v.key} style={{ borderBottom: `1px solid ${C.border}`,
-                  background: v.key === najbolja_dcf.key ? C.greenL : "transparent" }}>
-                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>
-                    {v.key === najbolja_dcf.key ? "🏆 " : ""}{v.l}
-                  </td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmt(v.dcf_ukupna_vrijednost)} EUR</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700,
-                    color: v.dcf_razlika_kapital >= 0 ? C.green : C.red }}>
-                    {`${v.dcf_razlika_kapital >= 0 ? "+" : ""}${fmt(v.dcf_razlika_kapital)} EUR`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ fontSize: 10, color: C.slateL, marginTop: 8, lineHeight: 1.5 }}>
-          * DCF ukupna vrijednost = jednokratna isplata ({fmt(jednokratni_iznos)} EUR) + sadašnja vrijednost rente
-          (renta × 12 × anuitetni faktor za {params.e65} god. uz stopu {(DISCOUNT_R*100).toFixed(1)}%) + sadašnja
-          vrijednost eventualnog nasljedstva (diskontirano na trenutak isplate). DCF razlika = DCF ukupna vrijednost
-          − ukupni akumulirani kapital ({fmt(kapital)} EUR). Negativna DCF razlika je uobičajena i ne znači "gubitak"
-          — odražava trošak osiguranja od dugovječnosti koje MOD preuzima isplatom doživotne rente.
-        </div>
-      </Card>
-
-      {/* Preporuka */}
-      <Card style={{ marginTop: 20, background: C.greenL, border: `1.5px solid ${C.green}33` }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>
-          💡 Koja ZOMF opcija donosi najviše pri sadašnjim uvjetima?
-        </div>
-        <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
-          Nominalno (zbroj svih isplata tijekom života, bez diskontiranja), uz preostali kapital od{" "}
-          <strong>{fmt(preostali)} EUR</strong> i pretpostavljeni životni vijek od {params.e65} god. nakon 65.,
-          najveću ukupnu vrijednost donosi opcija <strong>"{najbolja.l}"</strong> — {fmt(najbolja.ukupna_vrijednost)} EUR
-          ukupno, što je{" "}
-          <strong>{fmt(Math.abs(najbolja.razlika_kapital))} EUR {najbolja.razlika_kapital >= 0 ? "više" : "manje"}</strong>{" "}
-          od uloženog kapitala ({fmt(kapital)} EUR).
-          {" "}Uzimajući u obzir vremensku vrijednost novca (DCF, diskontna stopa {(DISCOUNT_R*100).toFixed(1)}%
-          — vaša pretpostavka prinosa fonda), najpovoljnija je opcija <strong>"{najbolja_dcf.l}"</strong> — sadašnja
-          vrijednost {fmt(najbolja_dcf.dcf_ukupna_vrijednost)} EUR, što je{" "}
-          <strong>{fmt(Math.abs(najbolja_dcf.dcf_razlika_kapital))} EUR {najbolja_dcf.dcf_razlika_kapital >= 0 ? "više" : "manje"}</strong>{" "}
-          od uloženog kapitala.
-          {" "}{najbolja.key === najbolja_dcf.key
-            ? "Obje analize daju isti zaključak."
-            : "Razlika u zaključku pokazuje koliko je važno uzeti u obzir vrijeme primanja isplata, ne samo nominalne iznose."}
-          {" "}Ako živite dulje od pretpostavke, doživotne varijante postaju relativno isplativije; ako kraće,
-          varijante s nasljeđivanjem (garancija, obiteljska) donose više vašoj obitelji.
-        </p>
-      </Card>
-
-      {/* Život od kamata — 5% pravilo */}
-      <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Život od prinosa na kapital (5% pravilo)</h3>
-        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Ideja "investicijske mirovine": kapital ostaje uložen, a trošite samo godišnji prinos — glavnica se
-          ne dira. Uz pretpostavljeni prosječni godišnji povrat od <strong>5%</strong>, vaš ukupni kapital iz
-          II. stupa ({fmt(kapital)} EUR) donosi:
+      <Detalji naslov="Za napredne: život samo od prinosa (ilustracija)" style={{ marginTop: 20 }}>
+        <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.6, marginBottom: 10 }}>
+          II. stup se u Hrvatskoj ne može ostaviti uloženim i trošiti samo prinos: kapital se obavezno pretvara u doživotnu mirovinu.
+          Tablica ispod samo ilustrira koliko bi kapitala trebalo za određeni mjesečni prihod uz 5 % godišnjeg prinosa
+          (npr. za vlastitu štednju ili III. stup).
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
           <ResultBox label="5% godišnje (ne dira glavnicu)" value={`${fmt(povrat_5_god)} EUR/god.`} color={C.gold} big />
@@ -2271,47 +2250,39 @@ function Stup2Calculator({ onSave, user, onAuthRequired }) {
             : `Vaš trenutni kapital (${fmt(kapital)} EUR) uz 5% god. prinos ne pokriva ni najniži prag od ${fmt(tablica_kamate[0].prihod_mj)} EUR/mj. iz tablice.`}
           {" "}Pravilo "5%" je pojednostavljena procjena (ne uzima u obzir inflaciju, poreze ni stvarnu volatilnost prinosa) — služi za ilustraciju, ne kao financijski savjet.
         </div>
-      </Card>
+      </Detalji>
     </div>
   );
 }
 
 // ─── UKUPNO ──────────────────────────────────────────────────────────────────
 function UkupnoView() {
-  const [p1, setP1] = useState({ pvb: 1.05, staz: 40, pf: 1.0, mf: 1.0, avm: AVM });
-  const [p2, setP2] = useState({ bruto_placa: 1300, god_stednje: 33, neto_prinos: 0.055, e65: 18, jednokratni_pct: 0.20 });
+  const [p, setP] = useState({ pvb: 1.0, staz: 40, stazOd2002: 25, kapital: 60000, jednokratni_pct: 0, e65: 18 });
+  const set = (k) => (v) => setP(prev => ({ ...prev, [k]: v }));
 
-  const r1 = calcStup1(p1);
-  const k2 = calcStup2FV(p2);
-  const renta = rentaDozivotna(k2 * (1 - p2.jednokratni_pct));
-  const dodatak = r1.efektivna * 0.27;
-  const ukupno = r1.efektivna + dodatak + renta;
-
-  const pie_data = [
-    { name: "I. stup", value: Math.round(r1.efektivna), fill: C.navy },
-    { name: "Dodatak 27%", value: Math.round(dodatak), fill: C.gold },
-    { name: "II. stup renta", value: Math.round(renta), fill: C.purple },
-  ];
+  const renta = rentaDozivotna(p.kapital * (1 - p.jednokratni_pct), p.e65);
+  const iz = calcIzbor({ pvb: p.pvb, staz: p.staz, stazOd2002: p.stazOd2002, rentaII: renta });
+  const najniza = iz.samoI.najniza;
+  const kombiniranaMoguca = iz.osnovnaSDodatkom > najniza;
+  const jednokratnaMoguca = iz.osnovnaSDodatkom > najniza * 1.15;
+  const boljeKombinirana = kombiniranaMoguca && iz.razlika > 0;
 
   async function handleExportPDF() {
     await exportSummaryToPDF({
-      title: "Ukupna kombinirana mirovina — izračun",
-      subtitle: "I. stup + Dodatak 27% + II. stup renta",
+      title: "Samo I. stup ili I. + II. stup — usporedba",
+      subtitle: `PVB ${p.pvb.toFixed(2)}, staž ${p.staz} god. (od 2002.: ${p.stazOd2002} god.)`,
       rows: [
-        ["I. stup (efektivna)", `${fmt(r1.efektivna)} EUR`],
-        ["Dodatak 27%", `${fmt(dodatak)} EUR`],
-        ["II. stup renta / mj.", `${fmt(renta)} EUR`],
-        ["UKUPNO / mj.", `${fmt(ukupno)} EUR`],
-        ["UKUPNO / god.", fmtEur(ukupno * 12)],
-        ["Akumulirani kapital II. stupa", `${fmt(k2)} EUR`],
-        [`Jednokratna isplata (${Math.round(p2.jednokratni_pct*100)}%)`, fmtEur(k2 * p2.jednokratni_pct)],
-        ["Stopa zamjene (vs. bruto plaća)", pct(ukupno / p2.bruto_placa)],
+        ["Samo I. stup (s dodatkom 27 %)", `${fmt(iz.samoIUkupno)} EUR/mj.`],
+        ["Osnovna mirovina iz I. stupa (s dodatkom 27 %)", `${fmt(iz.osnovnaSDodatkom)} EUR/mj.`],
+        ["Mirovina iz II. stupa (okvirno)", `${fmt(renta)} EUR/mj.`],
+        ["I. + II. stup ukupno", `${fmt(iz.kombinirana)} EUR/mj.`],
+        ["Razlika (I. + II. minus samo I.)", `${fmt(iz.razlika)} EUR/mj.`],
+        ["Kapital u II. stupu", `${fmt(p.kapital)} EUR`],
       ],
       formule: [
-        `I. stup = PVB ${p1.pvb.toFixed(2)} × Staž ${p1.staz} × AVM ${p1.avm.toFixed(2)} → ${fmt(r1.efektivna)} EUR`,
-        `Dodatak 27% = I. stup × 0,27 = ${fmt(dodatak)} EUR (NN 156/2023)`,
-        `II. stup renta ≈ Kapital × (1 − ${Math.round(p2.jednokratni_pct*100)}%) / (e₆₅ × 12) = ${fmt(renta)} EUR`,
-        `Ukupno = I. stup + Dodatak 27% + II. stup renta = ${fmt(ukupno)} EUR`,
+        `Samo I. stup = PVB × staž × AVM × 1,27 = ${fmt(iz.samoIUkupno)} EUR`,
+        `Osnovna mirovina = PVB × (staž do 2002. + staž od 2002. × ${FAKTOR_OSNOVNE}) × AVM × 1,27 = ${fmt(iz.osnovnaSDodatkom)} EUR`,
+        `Mirovina iz II. stupa ≈ kapital × (1 − jednokratno) / (${p.e65} × 12) = ${fmt(renta)} EUR`,
       ],
     });
   }
@@ -2319,7 +2290,7 @@ function UkupnoView() {
   return (
     <div className="fadeIn">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 12 }}>
-        <h2 style={{ fontSize: 22 }}>Ukupna kombinirana mirovina</h2>
+        <h2 style={{ fontSize: 22 }}>Samo I. stup ili I. + II. stup?</h2>
         <button onClick={handleExportPDF} title="Izvezi izračun kao PDF" style={{
           padding: "8px 14px", background: C.white, color: C.navy,
           border: `1.5px solid ${C.border}`, borderRadius: 8, fontWeight: 600, fontSize: 13,
@@ -2329,132 +2300,88 @@ function UkupnoView() {
           PDF
         </button>
       </div>
-      <p style={{ color: C.slateL, fontSize: 13, marginBottom: 24 }}>I. stup + Dodatak 27% + II. stup renta</p>
+      <p style={{ color: C.slateL, fontSize: 13, marginBottom: 16 }}>Najvažnija odluka za sve koji su u II. stupu, a bliže se mirovini</p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <Ukratko color={C.purple}>
+        Kad odlazite u mirovinu, birate između dvije mogućnosti. <strong>Samo I. stup:</strong> mirovina se računa kao da
+        nikad niste bili u II. stupu, uz dodatak od 27 %, a novac iz II. stupa prelazi u državni proračun.{" "}
+        <strong>I. + II. stup:</strong> dobivate nešto nižu „osnovnu“ mirovinu iz I. stupa (također s dodatkom od 27 %) i
+        uz nju doživotnu mirovinu iz II. stupa. Isplativije je ono što daje veći mjesečni iznos. HZMO vam prije odluke
+        šalje informativni izračun obje mogućnosti.
+      </Ukratko>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 20 }}>
         <Card>
-          <h3 style={{ fontSize: 14, marginBottom: 14, color: C.navy }}>I. stup – brzi unos</h3>
-          {[
-            { k: "pvb", l: "PVB", min: 0.3, max: 3.8, step: 0.01, fmt: v => v.toFixed(2) },
-            { k: "staz", l: "Staž (god.)", min: 1, max: 50, step: 1, fmt: v => `${v}` },
-          ].map(f => (
-            <Slider key={f.k} label={f.l} value={p1[f.k]} min={f.min} max={f.max} step={f.step}
-              format={f.fmt} onChange={v => setP1(prev => ({ ...prev, [f.k]: v }))} />
-          ))}
+          <h3 style={{ fontSize: 14, marginBottom: 14, color: C.navy }}>Vaši podaci</h3>
+          <Slider label="Prosječna plaća u odnosu na prosjek RH (PVB)" value={p.pvb} min={0.3} max={3.8} step={0.01}
+            format={v => `${v.toFixed(2)} (≈ ${fmt(v * PROSJ_BRUTO, 0)} EUR danas)`} onChange={set("pvb")} />
+          <Slider label="Ukupni mirovinski staž (god.)" value={p.staz} min={15} max={50} step={1}
+            format={v => `${v}`} onChange={v => setP(prev => ({ ...prev, staz: v, stazOd2002: Math.min(prev.stazOd2002, v) }))} />
+          <Slider label="Od toga staž od 2002. (godine u II. stupu)" value={p.stazOd2002} min={0} max={Math.min(p.staz, 45)} step={1}
+            format={v => `${v}`} onChange={set("stazOd2002")} />
         </Card>
         <Card>
-          <h3 style={{ fontSize: 14, marginBottom: 14, color: C.purple }}>II. stup – brzi unos</h3>
-          {[
-            { k: "bruto_placa", l: "Bruto plaća (EUR/mj.)", min: 500, max: 4000, step: 50, fmt: v => `${v.toLocaleString("hr-HR")}` },
-            { k: "god_stednje", l: "Godina štednje", min: 5, max: 45, step: 1, fmt: v => `${v}` },
-            { k: "neto_prinos", l: "Neto prinos (%)", min: 0.01, max: 0.12, step: 0.001, fmt: v => `${(v*100).toFixed(1)}%` },
-          ].map(f => (
-            <Slider key={f.k} label={f.l} value={p2[f.k]} min={f.min} max={f.max} step={f.step}
-              format={f.fmt} onChange={v => setP2(prev => ({ ...prev, [f.k]: v }))} />
-          ))}
-        </Card>
-      </div>
-
-      <Card style={{ marginBottom: 20, background: `linear-gradient(135deg, ${C.navy}, #243a68)` }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          {[
-            { l: "I. stup (neto)", v: r1.efektivna, c: "#7fbcff" },
-            { l: "+ Dodatak 27%", v: dodatak, c: C.goldL },
-            { l: "+ II. stup renta", v: renta, c: "#c4a8ff" },
-            { l: "= UKUPNO / MJ.", v: ukupno, c: "#7bffb0" },
-          ].map((it, i) => (
-            <div key={i} style={{ textAlign: "center", padding: "12px 8px" }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 6 }}>{it.l}</div>
-              <div style={{ fontSize: i === 3 ? 26 : 20, fontWeight: 800, color: it.c, fontFamily: "'Playfair Display', serif" }}>
-                {fmt(it.v)} EUR
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 10, color: "rgba(255,255,255,0.6)", textAlign: "center" }}>
-          I. stup ({fmt(r1.efektivna)} EUR) je {r1.bruto >= r1.najvisa ? "ograničen na zakonski maksimum" : "ispod zakonskog maksimuma"} za
-          ovaj staž (Najviša mirovina = {fmt(r1.najvisa)} EUR, uz PVB {p1.pvb.toFixed(2)} od max. {MAX_VB}).
-        </div>
-      </Card>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Card>
-          <h3 style={{ fontSize: 14, marginBottom: 14 }}>Struktura mirovine</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={pie_data} dataKey="value" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                {pie_data.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              </Pie>
-              <Tooltip formatter={v => [fmtEur(v), ""]} />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card>
-          <h3 style={{ fontSize: 14, marginBottom: 14 }}>Godišnji pregled</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[
-              { l: "Godišnja mirovina", v: ukupno * 12 },
-              { l: "Akumulirani kapital II. stupa", v: k2 },
-              { l: "Jednokratna isplata (20%)", v: k2 * p2.jednokratni_pct },
-              { l: "Stopa zamjene (vs. bruto plaća)", v: null, pct: ukupno / p2.bruto_placa },
-            ].map((it, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: i%2===0 ? C.bg : C.white, borderRadius: 7 }}>
-                <span style={{ fontSize: 12, color: C.slate }}>{it.l}</span>
-                <strong style={{ fontSize: 13, color: C.navy }}>
-                  {it.pct !== undefined ? pct(it.pct) : fmtEur(it.v)}
-                </strong>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 12, padding: "10px 12px", background: C.amberL, borderRadius: 8, fontSize: 11, color: C.amber }}>
-            <strong>Napomena:</strong> Renta II. stupa je aproksimacija. Dodatak 27% važi za kombiniranu mirovinu od 1.1.2024. (NN 156/2023).
-          </div>
+          <h3 style={{ fontSize: 14, marginBottom: 14, color: C.purple }}>II. stup</h3>
+          <Slider label="Stanje računa u II. stupu (EUR, vidi regos.hr ili e-Građani)" value={p.kapital} min={0} max={300000} step={1000}
+            format={v => `${fmt(v, 0)} EUR`} onChange={set("kapital")} />
+          <Slider label="Jednokratna isplata" value={p.jednokratni_pct} min={0} max={0.2} step={0.05}
+            format={v => v === 0 ? "ne uzimam" : `${Math.round(v * 100)} %`} onChange={set("jednokratni_pct")} />
+          <Slider label="Očekivane godine primanja mirovine" value={p.e65} min={12} max={26} step={1}
+            format={v => `${v}`} onChange={set("e65")} />
         </Card>
       </div>
 
-      <Card style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Dodatak od 27% na I. stup — tko i kada ima pravo</h3>
-        <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-          Od <strong>1.1.2024.</strong> (Zakon o izmjenama Zakona o mirovinskom osiguranju, NN 156/2023) dio mirovine
-          obračunat prema I. stupu trajno se uvećava za <strong>27%</strong> svim osiguranicima koji ostvaruju
-          <strong> kombiniranu (mješovitu) mirovinu</strong> iz I. i II. stupa. Povećanje se obračunava automatski —
-          ne treba posebni zahtjev.
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div style={{ padding: "12px 16px", background: C.greenL, borderRadius: 10, border: `1.5px solid ${C.green}33` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>✅ Ima pravo na dodatak</div>
-            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-              <li>Svi osiguranici koji su (obvezno od 2002. ili dobrovoljno) uplaćivali doprinose u <strong>II. stup</strong>{" "}
-                i čija se mirovina iz I. stupa obračunava po <strong>umanjenoj formuli</strong> za "mješovite" osiguranike.</li>
-              <li>Pravo se odnosi na sve vrste mirovina iz I. stupa (starosna, prijevremena, invalidska, obiteljska) —
-                dok god je osiguranik bio u II. stupu i nije iskoristio istup.</li>
-              <li>Dodatak se računa na <strong>cjelokupni I. stup dio</strong> mirovine, ne samo na razdoblje provedeno u
-                II. stupu.</li>
-            </ul>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 20 }}>
+        <Card style={{ border: `2px solid ${!boljeKombinirana ? C.green : C.border}` }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>A) Samo I. stup</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.navy, fontFamily: "'Playfair Display', serif" }}>{fmt(iz.samoIUkupno)} EUR</div>
+          <div style={{ fontSize: 11, color: C.slateL, marginTop: 6, lineHeight: 1.6 }}>
+            {iz.dI.najniza ? <>Isplaćuje se najniža mirovina ({fmt(iz.dI.ukupno)} EUR), jer je viša od izračuna s dodatkom.</> : <>{fmt(iz.dI.mirovina)} EUR + dodatak 27 % ({fmt(iz.dI.dodatak)} EUR).</>}
+            Kapital iz II. stupa ({fmt(p.kapital, 0)} EUR) prelazi u državni proračun.
           </div>
-          <div style={{ padding: "12px 16px", background: C.redL, borderRadius: 10, border: `1.5px solid ${C.red}33` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 6 }}>❌ Nema pravo na dodatak</div>
-            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-              <li>Osiguranici rođeni <strong>prije 1.1.1952.</strong> koji su u trenutku uvođenja II. stupa (2002.) imali
-                više od 50 godina i ostali isključivo u I. stupu — njihova mirovina obračunava se po "punoj"
-                (neumanjenoj) I. stup formuli, pa korekcija nije potrebna.</li>
-              <li>Osiguranici koji su iskoristili <strong>pravo na istup iz II. stupa</strong> (ZOMF čl. 104) — cijeli
-                njihov staž obračunat je po I. stup formuli kao da nikad nisu bili u II. stupu, pa nemaju ni umanjenje
-                ni dodatak.</li>
-              <li>Korisnici mirovina ostvarenih <strong>prije 1.1.2024.</strong> nisu automatski dobili dodatak retroaktivno
-                za prošla razdoblja, ali im se dodatak primjenjuje na isplate od 1.1.2024. nadalje ako ispunjavaju uvjet
-                kombinirane mirovine.</li>
-            </ul>
+          {!boljeKombinirana && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: C.green }}>✓ Viša mjesečna mirovina</div>}
+        </Card>
+        <Card style={{ border: `2px solid ${boljeKombinirana ? C.green : C.border}` }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 8 }}>B) I. + II. stup</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.purple, fontFamily: "'Playfair Display', serif" }}>{fmt(iz.kombinirana)} EUR</div>
+          <div style={{ fontSize: 11, color: C.slateL, marginTop: 6, lineHeight: 1.6 }}>
+            Osnovna mirovina {fmt(iz.osnovnaSDodatkom)} EUR ({iz.dO.najniza ? "najniža osnovna mirovina" : "s dodatkom 27 %"}) + mirovina iz II. stupa okvirno {fmt(renta)} EUR.
+            {p.jednokratni_pct > 0 && <> Uz to jednokratno {fmt(p.kapital * p.jednokratni_pct)} EUR.</>}
           </div>
+          {boljeKombinirana && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: C.green }}>✓ Viša mjesečna mirovina</div>}
+          {!kombiniranaMoguca && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: C.red }}>Nije moguće uz ove podatke</div>}
+        </Card>
+      </div>
+
+      <Card style={{ marginBottom: 20, background: boljeKombinirana ? C.greenL : C.blueL }}>
+        <div style={{ fontSize: 13, color: C.navy, lineHeight: 1.7 }}>
+          <strong>Što to znači:</strong>{" "}
+          {!kombiniranaMoguca
+            ? <>Vaša osnovna mirovina s dodatkom ({fmt(iz.osnovnaSDodatkom)} EUR) nije veća od najniže mirovine za vaš staž ({fmt(najniza)} EUR), pa mirovina iz oba stupa nije moguća. Mirovina se određuje samo iz I. stupa.</>
+            : boljeKombinirana
+              ? <>Uz ove pretpostavke mirovina iz oba stupa daje oko <strong>{fmt(iz.razlika)} EUR više</strong> mjesečno. Pri odabiru vrste mirovine u MOD-u (npr. obiteljske) iznos iz II. stupa bit će nešto niži.</>
+              : <>Uz ove pretpostavke mirovina samo iz I. stupa daje oko <strong>{fmt(-iz.razlika)} EUR više</strong> mjesečno. To je čest ishod kad je kapital u II. stupu manji ili kad ste mnogo godina staža ostvarili prije 2002.</>}
+          {kombiniranaMoguca && !jednokratnaMoguca && p.jednokratni_pct > 0 && <> Jednokratna isplata nije moguća jer osnovna mirovina nije veća od 115 % najniže ({fmt(najniza * 1.15)} EUR).</>}
         </div>
-        <div style={{ fontSize: 10, color: C.slateL, marginTop: 12, lineHeight: 1.5 }}>
-          Pozadina mjere: osiguranici u II. stupu uplaćuju 5% bruto plaće u privatnu kapitaliziranu štednju umjesto u
-          I. stup, zbog čega se njihov I. stup dio mirovine obračunava po nižoj formuli nego kod osiguranika koji
-          cijeli doprinos uplaćuju u I. stup. Dodatak od 27% djelomično izjednačava tu razliku, uz pretpostavku da
-          II. stup renta nadoknađuje ostatak. Konkretan iznos i primjenu dodatka u svakom pojedinom slučaju utvrđuje
-          HZMO rješenjem o mirovini.
+        <div style={{ fontSize: 11, color: C.slate, marginTop: 8 }}>
+          Ovo je okvirna procjena. Konačnu odluku donesite na temelju informativnog izračuna HZMO-a i ponude MOD-a.
         </div>
       </Card>
+
+      <NetoMirovinaBox bruto={Math.max(iz.samoIUkupno, iz.kombinirana)} />
+
+      <Detalji naslov="Kako se računa osnovna mirovina i dodatak od 27 %?">
+        <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
+          <li>Od 2002. osiguranici u oba stupa plaćaju 15 % plaće u I. stup i 5 % u II. stup. Zato se dio mirovine iz I. stupa
+            za staž od 2002. množi faktorom osnovne mirovine od oko {FAKTOR_OSNOVNE.toString().replace(".", ",")} (15 od 20 postotnih bodova, ZOMO čl. 90.).
+            Staž prije 2002. računa se u punom iznosu.</li>
+          <li>Dodatak od 27 % pripada i mirovini samo iz I. stupa i osnovnoj mirovini kod mirovine iz oba stupa. Od 1.1.2024.
+            kod kombinirane mirovine računa se na cijelu osnovnu mirovinu (NN 156/23). HZMO ga obračunava sam, zahtjev nije potreban.</li>
+          <li>Od 1.1.2019. izbor između ove dvije mogućnosti ima svatko tko je u oba stupa, u postupku ostvarivanja starosne ili
+            prijevremene starosne mirovine. Izjava se daje u Mirovinskim informativnim centrima, u FINA-i ili putem e-usluge „Odabir mirovine“.</li>
+          <li>Mirovina iz II. stupa ovdje je okvirna (kapital podijeljen s brojem mjeseci isplate, bez prinosa tijekom isplate).</li>
+        </ul>
+      </Detalji>
     </div>
   );
 }
@@ -2638,9 +2565,11 @@ function MojiScenarijiView({ user, onAuthRequired }) {
                 {(r1 || k2) && (
                   <div style={{ background: C.navy, borderRadius: 8, padding: "7px 12px", marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>Ukupno (I.+27%+II.)</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>{k2 !== null ? "Ukupno (osnovna I. + 27 % + II.)" : "Ukupno (I. + 27 %)"}</span>
                       <span style={{ fontSize: 15, fontWeight: 800, color: "#7bffb0" }}>
-                        {fmtEur((r1 ? r1.efektivna * 1.27 : 0) + (renta2 || 0))}/mj.
+                        {fmtEur(r1
+                          ? kombiniranaMirovina({ ...s.stup1, stazOd2002: k2 !== null ? Math.min(s.stup1.staz, s.stup2.god_stednje) : 0, rentaII: renta2 || 0 }).ukupno
+                          : (renta2 || 0))}/mj.
                       </span>
                     </div>
                   </div>
@@ -2662,7 +2591,7 @@ const SP500_40Y_REALNI    = 0.072;  // ~7,2% realno (prilagođeno inflacijom, pr
 const SP500_LONG_NOMINAL  = 0.102;  // 10,2% god. dugoročni CAGR od 1928. (NYU Stern / Damodaran)
 
 function SP500MirovinaBlog() {
-  const [placa, setPlaca] = useState(1300);
+  const [placa, setPlaca] = useState(PROSJ_BRUTO);
   const [staz, setStaz] = useState(40);
   const [doprinos_pct, setDoprinos] = useState(0.20);
   const [prinos_mode, setPrinosMode] = useState("40y_nominal"); // 40y_nominal | 40y_realni | long_nominal | custom
@@ -2690,11 +2619,12 @@ function SP500MirovinaBlog() {
   const renta_3pct = kapital_sp500 * 0.03 / 12;   // konzervativno
 
   // Usporedba s HR sustavom (20% ide u I.+II.)
-  const pvb_est = placa / 1300;
-  const hr_i = calcStup1({ pvb: pvb_est, staz, pf: 1.0, mf: 1.0, avm: AVM }).efektivna;
-  const hr_dod = hr_i * 0.27;
+  const pvb_est = placa / PROSJ_BRUTO;
   const hr_ii = rentaDozivotna(calcStup2FV({ bruto_placa: placa, god_stednje: staz, neto_prinos: 0.055 }) * 0.8);
-  const hr_uk = hr_i + hr_dod + hr_ii;
+  const hr_k = kombiniranaMirovina({ pvb: pvb_est, staz, rentaII: hr_ii });
+  const hr_i = hr_k.osnovna;
+  const hr_dod = hr_k.dodatak;
+  const hr_uk = hr_k.ukupno;
 
   const razlika_kapital = kapital_sp500 - (hr_uk * 18 * 12); // HR ~18 god. isplate
   const razlika_renta   = renta_4pct - hr_uk;
@@ -2990,11 +2920,23 @@ function BlogView() {
   const filtered = filter === "Sve" ? BLOG_POSTS : BLOG_POSTS.filter(p => p.category === filter);
 
   function renderMd(text) {
-    return text.split("\n").map((line, i) => {
+    return text.split("\n").map((line, i, arr) => {
       if (line.startsWith("## ")) return <h2 key={i} style={{ fontSize: 18, marginTop: 24, marginBottom: 8, color: C.navy }}>{line.slice(3)}</h2>;
       if (line.startsWith("### ")) return <h3 key={i} style={{ fontSize: 15, marginTop: 16, marginBottom: 6, color: C.navyL }}>{line.slice(4)}</h3>;
       if (line.startsWith("> ")) return <blockquote key={i} style={{ borderLeft: `3px solid ${C.gold}`, paddingLeft: 12, color: C.slate, fontStyle: "italic", margin: "12px 0" }}>{line.slice(2)}</blockquote>;
-      if (line.startsWith("| ")) return null;
+      if (line.startsWith("|")) {
+        if (/^\|[\s\-|]+\|$/.test(line.trim())) return null;
+        const cells = line.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+        const header = i + 1 < arr.length && /^\|[\s\-|]+\|$/.test(arr[i + 1].trim());
+        return (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: `repeat(${cells.length}, 1fr)`, gap: 8,
+            padding: "6px 10px", fontSize: 13, background: header ? C.navy : (i % 2 ? C.bg : C.white),
+            color: header ? "#fff" : C.slate, fontWeight: header ? 700 : 400, borderRadius: header ? "8px 8px 0 0" : 0 }}>
+            {cells.map((c, j) => <span key={j}>{c}</span>)}
+          </div>
+        );
+      }
+      if (line.startsWith("- ")) return <p key={i} style={{ lineHeight: 1.7, marginBottom: 4, paddingLeft: 14 }} dangerouslySetInnerHTML={{ __html: "• " + line.slice(2).replace(/\*\*(.*?)\*\*/g, (_, t) => `<strong>${t}</strong>`) }} />;
       if (line === "") return <br key={i} />;
       const boldLine = line.replace(/\*\*(.*?)\*\*/g, (_, t) => `<strong>${t}</strong>`);
       return <p key={i} style={{ lineHeight: 1.7, marginBottom: 6 }} dangerouslySetInnerHTML={{ __html: boldLine }} />;
@@ -3070,7 +3012,7 @@ function BlogView() {
 }
 
 // ─── EDUKACIJA ───────────────────────────────────────────────────────────────
-const AVG_HR = 1300; // prosj. bruto plaća RH 2024.
+const AVG_HR = PROSJ_BRUTO;
 
 function EduSection({ id, emoji, title, color, children }) {
   return (
@@ -3095,7 +3037,7 @@ function EduView() {
   const [pvb, setPvb] = useState(1.0);
   const [rani, setRani] = useState(0);
   const [odgoda, setOdgoda] = useState(0);
-  const [plaça, setPlaça] = useState(1300);
+  const [plaça, setPlaça] = useState(PROSJ_BRUTO);
   const [prinos, setPrinos] = useState(0.055);
   const [godStednje, setGodStednje] = useState(33);
   const [investPrinos, setInvestPrinos] = useState(0.07);
@@ -3279,7 +3221,7 @@ function EduView() {
                 { sym: "×", desc: "", color: "#fff" },
                 { sym: "MF*", desc: "Mirovinski faktor (vrsta)", color: "#ff9090" },
                 { sym: "×", desc: "", color: "#fff" },
-                { sym: "AVM", desc: "Aktualna vrijednost = 14,45 EUR", color: C.goldL },
+                { sym: "AVM", desc: `Aktualna vrijednost = ${fmt(AVM)} EUR`, color: C.goldL },
               ].map((t, i) => t.sym === "=" || t.sym === "×"
                 ? <span key={i} style={{ fontSize: 22, color: "#fff", fontWeight: 300 }}>{t.sym}</span>
                 : (
@@ -3322,8 +3264,8 @@ function EduView() {
                 <div style={{ padding: "10px 14px", background: C.blueL, borderRadius: 9, fontSize: 12 }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>⚖️ Minimalni uvjeti:</div>
                   <ul style={{ paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3, color: C.slate }}>
-                    <li>Starosna mirovina: <strong>min. 15 god.</strong> staža + puna dob (65 M / ~64 Ž)</li>
-                    <li>Prijevremena: <strong>min. 30 god.</strong> staža (muškarci), 28 god. (žene)</li>
+                    <li>Starosna mirovina: <strong>min. 15 god.</strong> staža + dob 65 (muškarci) / 64 u 2026. (žene, do 2030. raste na 65)</li>
+                    <li>Prijevremena: muškarci <strong>60 god. + 35 god.</strong> staža, žene 59 god. + 34 god. staža (2026.)</li>
                     <li>Dugogodišnji osiguranik: <strong>41 god.</strong> + 60 god. starosti</li>
                   </ul>
                 </div>
@@ -3384,7 +3326,7 @@ function EduView() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   {[
                     { plaça: 780,  pvb: "0,60", boja: C.red,    label: "Minimalac" },
-                    { plaça: 1300, pvb: "1,00", boja: C.green,  label: "Prosjek RH" },
+                    { plaça: PROSJ_BRUTO, pvb: "1,00", boja: C.green,  label: "Prosjek RH" },
                     { plaça: 2600, pvb: "2,00", boja: C.purple, label: "Dvostruki prosjek" },
                   ].map(p => (
                     <div key={p.plaça} style={{ background: p.boja+"11", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
@@ -3428,8 +3370,8 @@ function EduView() {
               <div style={{ marginTop: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.slate, marginBottom: 8 }}>Što PVB znači u praksi</div>
                 {[
-                  { pvb_val: 0.6, opis: "Minimalna plaća cijele karijere", plaça_eur: "~780 EUR bruto" },
-                  { pvb_val: 1.0, opis: "Uvijek prosječna plaća RH", plaça_eur: "~1.300 EUR bruto" },
+                  { pvb_val: 0.52, opis: "Minimalna plaća cijele karijere", plaça_eur: "~1.050 EUR bruto (2026.)" },
+                  { pvb_val: 1.0, opis: "Uvijek prosječna plaća RH", plaça_eur: "~2.016 EUR bruto (2025.)" },
                   { pvb_val: 1.5, opis: "50% iznad prosjeka", plaça_eur: "~1.950 EUR bruto" },
                   { pvb_val: 2.0, opis: "Visoka stručna plaća", plaça_eur: "~2.600 EUR bruto" },
                 ].map(row => {
@@ -3457,9 +3399,9 @@ function EduView() {
             <p style={{ fontSize: 13, lineHeight: 1.8, color: C.slate }}>
               <strong>Polazni faktor (PF)</strong> je "nagrada ili kazna" za odluku kada ćete otići u mirovinu.
               Odlazite li <span style={{ color: C.red, fontWeight: 700 }}>ranije</span> od zakonske dobi — PF je manji od 1,0
-              i vaša mirovina je trajno niža. Odlazite li <span style={{ color: C.green, fontWeight: 700 }}>kasnije</span>{" "}
-              — PF je veći od 1,0 i mirovina je trajno viša. Ovo povećanje/smanjenje je <strong>trajno</strong> —
-              ne mijenja se ni kad napunite "pravu" dob.
+              i mirovina je niža. Odlazite li <span style={{ color: C.green, fontWeight: 700 }}>kasnije</span>{" "}
+              — PF je veći od 1,0 i mirovina je trajno viša. Smanjenje zbog ranijeg odlaska ne prestaje kad navršite
+              redovnu dob, nego tek s <strong>70 godina</strong> (od 1.1.2026.), kada ga HZMO sam ukida.
             </p>
           </Card>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
@@ -3471,7 +3413,7 @@ function EduView() {
                   onChange={setRani} color={C.red} />
                 <div style={{ padding: "10px 12px", background: C.redL, borderRadius: 9, fontSize: 12 }}>
                   <div>PF = 1,00 − 0,002 × {rani} = <strong style={{ color: C.red }}>{pf_rani.toFixed(3)}</strong></div>
-                  <div style={{ marginTop: 4, color: C.red }}>Trajno smanjenje: <strong>−{((1-pf_rani)*100).toFixed(1)}%</strong></div>
+                  <div style={{ marginTop: 4, color: C.red }}>Smanjenje do 70. godine: <strong>−{((1-pf_rani)*100).toFixed(1)}%</strong></div>
                   <div style={{ marginTop: 4 }}>Mirovina: {fmt(mirovina_std)} EUR → <strong style={{ color: C.red }}>{fmt(mirovina_rani)} EUR</strong> (−{fmt(mirovina_std-mirovina_rani)} EUR/mj.)</div>
                 </div>
               </Card>
@@ -3533,7 +3475,7 @@ function EduView() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 8 }}>Kretanje AVM-a (odabrane godine):</div>
                 {[
                   { god: "2019.", avm: 10.18 }, { god: "2021.", avm: 10.73 }, { god: "2023.", avm: 12.34 },
-                  { god: "2024.", avm: 13.57 }, { god: "1.7.2025.", avm: 14.45, curr: true },
+                  { god: "2024.", avm: 13.57 }, { god: "1.7.2025.", avm: 14.45 }, { god: "1.7.2026.", avm: 15.64, curr: true },
                 ].map(row => (
                   <div key={row.god} style={{ display: "flex", justifyContent: "space-between",
                     padding: "4px 8px", background: row.curr ? C.green+"22" : "transparent",
@@ -3546,9 +3488,9 @@ function EduView() {
                 ))}
               </div>
               <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.7 }}>
-                <strong>Kako se usklađuje (Swiss index, od ZMO 2025.):</strong>
+                <strong>Kako se usklađuje (ZOMO čl. 91.):</strong>
                 <ul style={{ paddingLeft: 16, marginTop: 6 }}>
-                  <li>2× godišnje (1. veljače i 1. kolovoza)</li>
+                  <li>2× godišnje (1. siječnja i 1. srpnja)</li>
                   <li>Formula: 85% × rast plaća + 15% × inflacija (ili obrnuto, što je povoljnije)</li>
                   <li>Garantira da mirovine prate ekonomski razvoj</li>
                 </ul>
@@ -3700,11 +3642,12 @@ function EduView() {
               <MiniSlider label="Staž" value={staz} min={20} max={50} step={1}
                 format={v => `${v} god.`} onChange={setStaz} color={C.navy} />
               {(() => {
-                const m1 = calcStup1({ pvb: plaça / AVG_HR, staz, pf: 1, mf: 1, avm: AVM }).efektivna;
                 const k2 = calcStup2FV({ bruto_placa: plaça, god_stednje: staz, neto_prinos: prinos });
                 const r2 = rentaDozivotna(k2 * 0.8);
-                const dod = m1 * 0.27;
-                const uk = m1 + dod + r2;
+                const km = kombiniranaMirovina({ pvb: plaça / AVG_HR, staz, rentaII: r2 });
+                const m1 = km.osnovna;
+                const dod = km.dodatak;
+                const uk = km.ukupno;
                 const stopaz = uk / plaça;
                 return (
                   <div style={{ marginTop: 8 }}>
@@ -3905,10 +3848,10 @@ function EduView() {
                   obveze: ["Odaberite OMF pri zaposlenju", "Pratite stanje na e-Građani / REGOS portalu", "Pri umirovljenju odaberite MOD"] },
                 { emoji: "🏛", naziv: "REGOS", boja: C.navy,
                   opis: "Središnji registar osiguranika. Vodi evidenciju svih osobnih računa, prima uplate od HZMO-a i raspoređuje ih u fondove.",
-                  obveze: ["Vodi vaš osobni račun", "Rasporedit će vas u fond A ako ne odaberete", "Prebacuje sredstva MOD-u pri umirovljenju"] },
+                  obveze: ["Vodi vaš osobni račun", "Rasporedit će vas u fond kategorije B ako ne odaberete", "Prebacuje sredstva MOD-u pri umirovljenju"] },
                 { emoji: "📈", naziv: "Mirovinsko društvo (OMF)", boja: C.purple,
                   opis: "Profesionalni upravitelj fonda. Ulaže vaša sredstva u financijske instrumente. Pod nadzorom HANFA-e.",
-                  obveze: ["Ulaže novac prema strategiji fonda", "Naplaćuje naknade (max 0,24% god.)", "Mora imati jamstveni polog"] },
+                  obveze: ["Ulaže novac prema strategiji fonda", "Naplaćuje naknadu za upravljanje (0,23 % god. u 2026.)", "Pod nadzorom je Hanfe"] },
                 { emoji: "🏦", naziv: "MOD", boja: C.green,
                   opis: "Mirovinsko osiguravajuće društvo. Od vaših akumuliranih sredstava formira i isplaćuje doživotnu rentu.",
                   obveze: ["Sklapa ugovor o mirovini s vama", "Isplaćuje doživotnu rentu", "Preuzima dugovječnosni rizik"] },
@@ -3946,14 +3889,12 @@ function EduView() {
               <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
                 <strong>MOD (Mirovinsko osiguravajuće društvo)</strong> je privatna financijska institucija
                 koja od vaših akumuliranih sredstava u OMF-u formira doživotnu mirovinu.
-                U HR trenutno postoje <strong>4 registrirana MOD-a</strong>:
+                U Hrvatskoj trenutno posluju <strong>dva MOD-a</strong> (registar Hanfe, 2026.):
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
                 {[
-                  { n: "HRMOD d.d.", v: "Hrvatska poštanska banka" },
-                  { n: "Erste Mirovinski", v: "Erste Gruppe" },
-                  { n: "PBZ CO d.o.o.", v: "Privredna banka Zagreb" },
-                  { n: "Croatia MOD", v: "Croatia osiguranje" },
+                  { n: "Hrvatsko mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
+                  { n: "Raiffeisen mirovinsko osiguravajuće društvo d.d.", v: "Zagreb" },
                 ].map(m => (
                   <div key={m.n} style={{ display: "flex", justifyContent: "space-between",
                     padding: "5px 10px", background: C.greenL, borderRadius: 7, fontSize: 11 }}>
@@ -3975,7 +3916,7 @@ function EduView() {
                 <div style={{ marginTop: 10, padding: "8px 10px", background: C.amberL,
                   borderRadius: 7, fontSize: 11, color: C.amber }}>
                   ⚠ MOD preuzima <strong>dugovječnosni rizik</strong> — obvezan je isplaćivati rentu
-                  bez obzira koliko dugo živite. Zato je renta niža od "kapitala / e₆₅".
+                  bez obzira koliko dugo živite. Mjesečni iznos zato ovisi o očekivanom trajanju života i kamatama.
                 </div>
               </div>
             </Card>
@@ -3983,19 +3924,19 @@ function EduView() {
             <Card style={{ borderLeft: `4px solid ${C.purple}` }}>
               <h3 style={{ fontSize: 14, color: C.purple, marginBottom: 14 }}>📈 Kategorije OMF fondova (A, B, C)</h3>
               <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 12 }}>
-                Svako mirovinsko društvo upravlja s <strong>tri kategorije fonda</strong> s različitim
-                rizičnim profilima. Ukupno 12 fondova na tržištu (4 društva × 3 kategorije).
+                Svako mirovinsko društvo upravlja s <strong>tri kategorije fonda</strong> različitog rizika.
+                Ako sami ne izaberete, REGOS vas raspoređuje u kategoriju B.
               </p>
               {[
                 { kat: "A", boja: C.green, profil: "Agresivni rast",
-                  dionice: "do 100% dionica", za: "Mladi (>10 god. do mirovine)",
-                  opis: "Najviši očekivani prinos dugoročno, ali i najveće kratkoročne oscilacije. Primjeren za osiguranike s dugim investicijskim horizontom." },
+                  dionice: "najviše dionica", za: "Više od 10 god. do mirovine",
+                  opis: "Najviši očekivani prinos dugoročno, ali i najveće oscilacije. Kad do mirovine ostane manje od 10 godina, REGOS vas prebacuje u B (na zahtjev možete ostati u A do 5 godina prije mirovine)." },
                 { kat: "B", boja: C.blue, profil: "Umjereni rast",
-                  dionice: "do 55% dionica", za: "Srednja dob (5–10 god. do mir.)",
-                  opis: "Balans između rasta i sigurnosti. REGOS automatski prebacuje iz A u B 15 godina nakon prvog zaposlenja, ili 5 god. prije mirovine." },
+                  dionice: "umjereno dionica", za: "Zadana kategorija",
+                  opis: "Ravnoteža rasta i sigurnosti. U nju se raspoređuju svi koji ne izaberu kategoriju." },
                 { kat: "C", boja: C.slate, profil: "Konzervativni",
-                  dionice: "do 30% dionica", za: "Pred-mirovinska dob (<5 god.)",
-                  opis: "Naglasak na zaštiti kapitala. REGOS automatski prebacuje iz A u B ako do mirovine ostane manje od 5 god. Niži prinos, niži rizik gubitka." },
+                  dionice: "malo ili bez dionica", za: "Zadnjih 5 god. do mirovine",
+                  opis: "Naglasak na zaštiti kapitala: niži prinos, niži rizik gubitka. Namijenjen je osiguranicima kojima je do mirovine manje od 5 godina." },
               ].map(f => (
                 <div key={f.kat} style={{ marginBottom: 10, padding: "10px 12px",
                   background: f.boja + "0a", border: `1px solid ${f.boja}22`, borderRadius: 9 }}>
@@ -4012,9 +3953,7 @@ function EduView() {
                 </div>
               ))}
               <div style={{ fontSize: 11, color: C.slateL, marginTop: 6 }}>
-                Kategoriju možete promijeniti <strong>jednom godišnje</strong> u svom kalendarskom mjesecu
-                rođenja (bez naknade). Fond (mirovinsko društvo) možete promijeniti u bilo koje vrijeme
-                (bez naknade nakon 3 god. članstva).
+                Fond i kategoriju možete promijeniti preko REGOS-a (FINA ili e-Građani). Točna pravila i rokove provjerite na regos.hr.
               </div>
             </Card>
           </div>
@@ -4023,9 +3962,11 @@ function EduView() {
           <Card style={{ marginBottom: 18, border: `2px solid ${C.gold}33` }}>
             <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 14 }}>💶 Oporezivanje mirovina — što ostaje na računu</h3>
             <div style={{ padding: "10px 14px", background: C.amberL, borderRadius: 10, border: `1.5px solid ${C.amber}55`, marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 4 }}>⏳ Od 1.1.2027. porez na mirovine se ukida</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 4 }}>⏳ Od 1.1.2027. porez na mirovine trebao bi se ukinuti</div>
               <div style={{ fontSize: 12, color: C.slate, lineHeight: 1.6 }}>
-                Ministar financija Primorac najavio je da se od 1. siječnja 2027. više neće oporezivati mirovine. Priprema se novi zakon. Do tada vrijede pravila u nastavku.
+                Vlada je u rujnu 2026. uputila Saboru izmjene Zakona o porezu na dohodak: umanjenje poreza za umirovljenike raste s 50 %
+                na 100 % za dio mirovine oporeziv nižom stopom (do 5.000 EUR osnovice). Ako ih Sabor usvoji, većina umirovljenika od 2027. neće plaćati porez.
+                Do tada vrijede pravila u nastavku.
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
@@ -4033,9 +3974,9 @@ function EduView() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Kako se obračunava porez</div>
                 <ol style={{ fontSize: 12, color: C.slate, lineHeight: 1.8, paddingLeft: 16, margin: 0 }}>
                   <li>Porezna osnovica = mirovina − <strong>{OSOBNI_ODBITAK} EUR</strong> (osobni odbitak/mj.)</li>
-                  <li>Porez (bruto): do 4.200 EUR/mj. → <strong>20%</strong>, iznad → <strong>30%</strong></li>
-                  <li>Efektivni porez = porez × <strong>50%</strong> (halviranje za mirovine, ZPD čl. 45.)</li>
-                  <li>Prirez: ovisno o JLS (općini/gradu)</li>
+                  <li>Porez po stopi vašeg grada ili općine: niža stopa 15–23 % (najčešće 20 %) do 5.000 EUR osnovice, viša 25–33 % iznad</li>
+                  <li>Umirovljenici plaćaju <strong>pola</strong> obračunatog poreza (umanjenje 50 %)</li>
+                  <li>Prirez ne postoji od 2024. (uključen je u stope gradova)</li>
                 </ol>
               </div>
               <div style={{ padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
@@ -4049,7 +3990,7 @@ function EduView() {
                     </div>
                   );
                 })}
-                <div style={{ fontSize: 10, color: C.slateL, marginTop: 6 }}>Bez prireza · osobni odbitak {OSOBNI_ODBITAK} EUR</div>
+                <div style={{ fontSize: 10, color: C.slateL, marginTop: 6 }}>Stopa 20 % · osobni odbitak {OSOBNI_ODBITAK} EUR · 2026.</div>
               </div>
             </div>
             <div style={{ fontSize: 11, color: C.slateL, lineHeight: 1.6 }}>
@@ -4070,19 +4011,19 @@ function EduView() {
                   opis: "Podnosite zahtjev HZMO-u za starosnu ili prijevremenu mirovinu. HZMO izdaje Rješenje o mirovini i šalje podatke REGOS-u.",
                   detalj: null },
                 { n: "2", boja: C.navy, naslov: "Odluka: kombinirana ili samo I. stup?", emoji: "⚖️",
-                  opis: "Imate pravo izabrati isplatu SAMO iz I. stupa — tada se sva vaša OMF sredstva prenose u I. stup i mirovina se uvećava. Ili odabirete KOMBINIRANU mirovinu (I. + II. stup).",
-                  detalj: "Istup iz II. stupa moguć je samo za osiguranike koji su u II. stup ušli dobrovoljno (oni koji su 2002. imali 40–50 god.). Ostali ne mogu izaći." },
+                  opis: "Birate mirovinu SAMO iz I. stupa (računa se kao da nikad niste bili u II. stupu, uz dodatak 27 %; sredstva II. stupa idu u državni proračun) ili mirovinu iz I. + II. stupa.",
+                  detalj: "Od 2019. ovaj izbor ima svatko tko je u oba stupa. Prije odluke dobivate informativni izračun obje mogućnosti." },
                 { n: "3", boja: C.blue, naslov: "Odabir MOD-a (za kombiniranu)", emoji: "🏦",
-                  opis: "U roku od 15 dana od zaprimanja REGOS obavijesti, odabirete MOD na šalterima FINA-e, Mirovinskom informativnom centru ili putem e-Građani. Ako ne odaberete, REGOS vas raspoređuje u MOD po službenoj dužnosti.",
-                  detalj: "Na raspolaganju su 4 MOD-a. Usporedite uvjete prije odabira — naknade i vrste mirovine mogu se razlikovati." },
+                  opis: "Nakon obavijesti REGOS-a birate MOD u FINA-i, Mirovinskom informativnom centru ili putem e-Građana. Ako ne odaberete u roku, REGOS vas raspoređuje po službenoj dužnosti.",
+                  detalj: "Trenutno posluju dva MOD-a. Usporedite ponuđene iznose za istu vrstu mirovine." },
                 { n: "4", boja: C.blue, naslov: "Jednokratna isplata do 20% (opcija)", emoji: "💵",
-                  opis: "Možete zatražiti jednokratnu isplatu do 20% akumuliranog kapitala PRIJE formiranja doživotne rente. MOD obračunava porez na dohodak na taj iznos. Uvjet: osnovna mirovina iz I. stupa mora biti veća od 115% najniže mirovine.",
+                  opis: "Možete zatražiti jednokratnu isplatu do 20 % kapitala prije početka doživotne mirovine. Uvjet: osnovna mirovina iz I. stupa mora biti veća od 115 % najniže mirovine.",
                   detalj: null },
                 { n: "5", boja: C.purple, naslov: "Ugovor o mirovini s MOD-om", emoji: "📄",
                   opis: "MOD i vi potpisujete Ugovor o mirovini. U njemu se određuje: vrsta mirovine, iznos rente, uvjeti usklađivanja, eventualno zajamčeno razdoblje i ime korisnika.",
                   detalj: "Jednom sklopljeni ugovor nije moguće promijeniti. Zato je izbor vrste mirovine iznimno važna i TRAJNA odluka." },
                 { n: "6", boja: C.green, naslov: "Isplata doživotne rente", emoji: "💰",
-                  opis: "Renta se isplaćuje svaki mjesec dok ste živi — bez iznimke, bez obzira na duljinu života. MOD preuzima ovaj rizik. Usklađivanje rente (IPC) ovisi o odabranom programu.",
+                  opis: "Mirovina iz II. stupa isplaćuje se svaki mjesec dok ste živi, bez obzira na duljinu života. Način usklađivanja s inflacijom navodi se u ugovoru.",
                   detalj: null },
               ].map((k, i) => (
                 <div key={i} style={{ display: "flex", gap: 16, marginBottom: 18, position: "relative" }}>
@@ -4111,58 +4052,22 @@ function EduView() {
             </div>
           </Card>
 
-          {/* Prijenos II. stupa u I. stup — istup */}
+          {/* Izbor: samo I. stup ili I. + II. */}
           <Card style={{ marginBottom: 18, borderTop: `4px solid ${C.navy}` }}>
-            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 6 }}>🔁 Prijenos sredstava iz II. u I. stup ("istup") — tko, kada i na temelju čega</h3>
-            <p style={{ fontSize: 12, color: C.slateL, marginBottom: 14, lineHeight: 1.6 }}>
-              ZOMF čl. 104. — pravo na "istup" iz II. stupa pri ostvarivanju mirovine
-            </p>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
-              <div style={{ padding: "12px 16px", background: C.navy + "0a", borderRadius: 10, border: `1.5px solid ${C.navy}22` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>👤 Tko se može odlučiti za istup</div>
-                <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-                  <li><strong>Samo "dobrovoljni ulaznici"</strong> — osiguranici koji su u trenutku uvođenja II. stupa
-                    (1.1.2002.) imali <strong>40–50 godina</strong> i tada se sami, dobrovoljno, odlučili uključiti u
-                    II. stup (umjesto da ostanu isključivo u I. stupu, što je za tu dobnu skupinu bilo dopušteno).</li>
-                  <li>Osiguranici koji su 2002. imali <strong>do 40 god.</strong> bili su <strong>obvezno</strong>{" "}
-                    uključeni u II. stup i <strong>nemaju</strong> pravo na istup — za njih je kombinirana mirovina
-                    jedina opcija.</li>
-                  <li>Osiguranici koji su 2002. imali <strong>preko 50 god.</strong> ostali su isključivo u I. stupu i
-                    pitanje istupa za njih ne postoji (nikad nisu ni bili u II. stupu).</li>
-                </ul>
-              </div>
-              <div style={{ padding: "12px 16px", background: C.goldL, borderRadius: 10, border: `1.5px solid ${C.gold}33` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, marginBottom: 6 }}>⏱ Kada se odluka donosi</div>
-                <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-                  <li>Odluka se donosi <strong>jednom, u trenutku ostvarivanja prava na mirovinu</strong> (umirovljenje),
-                    kao dio zahtjeva koji se podnosi HZMO-u / REGOS-u.</li>
-                  <li>Odluka je <strong>trajna i nepovratna</strong> — nakon što je mirovina ugovorena (kombinirana ili
-                    isključivo I. stup), ne može se naknadno promijeniti.</li>
-                  <li>Prije odluke vrijedi zatražiti <strong>informativni izračun mirovine u oba scenarija</strong> (HZMO
-                    za I. stup, REGOS/MOD za kombiniranu) i usporediti ih.</li>
-                </ul>
-              </div>
-            </div>
-
-            <div style={{ padding: "12px 16px", background: C.bg, borderRadius: 10, border: `1.5px solid ${C.border}` }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>⚖️ Elementi usporedbe — što gledati prije odluke</div>
-              <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
-                <li><strong>Ako se izabere istup:</strong> cijeli akumulirani kapital iz II. stupa prenosi se u I. stup
-                  (HZMO), a mirovina se računa po <strong>punoj (neumanjenoj) I. stup formuli</strong> — kao da je
-                  osiguranik cijeli staž bio isključivo u I. stupu. U tom slučaju <strong>ne pripada dodatak od 27%</strong>{" "}
-                  (vidi karticu "Dodatak od 27%"), jer korekcija nije potrebna — mirovina nije bila umanjena.</li>
-                <li><strong>Ako se izabere kombinirana mirovina:</strong> I. stup dio obračunava se po umanjenoj formuli
-                  za "mješovite" osiguranike, ali se uvećava za 27% dodatak, a uz to se isplaćuje i renta iz II. stupa
-                  (na temelju stvarno akumuliranog kapitala i ostvarenog prinosa fonda).</li>
-                <li><strong>Trajanje članstva u II. stupu i ostvareni prinos</strong> ključno utječu na ishod usporedbe:
-                  kraće razdoblje uplata i/ili slabiji prinos fonda obično znače manji akumulirani kapital, pa II. stup
-                  renta + dodatak možda neće nadoknaditi razliku — u tom slučaju istup može biti povoljniji. Dugo
-                  razdoblje uplata uz dobar prinos (efekt složenog ukamaćivanja) obično čini kombiniranu mirovinu
-                  povoljnijom.</li>
-                <li>Razliku konačno utvrđuje <strong>HZMO/REGOS izračunom za konkretan slučaj</strong> — ova kartica
-                  objašnjava na čemu se odluka temelji, ne zamjenjuje službeni izračun.</li>
-              </ul>
+            <h3 style={{ fontSize: 14, color: C.navy, marginBottom: 10 }}>🔁 Izbor pri umirovljenju: samo I. stup ili I. + II. stup</h3>
+            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
+              <li><strong>Tko bira:</strong> od 1.1.2019. svatko tko je u oba stupa, u postupku ostvarivanja starosne ili prijevremene
+                starosne mirovine. Nije bitno kako ste ušli u II. stup.</li>
+              <li><strong>Samo I. stup:</strong> mirovina se računa kao da ste uvijek bili samo u I. stupu, uz dodatak od 27 %.
+                Sredstva s računa u II. stupu prenose se u državni proračun.</li>
+              <li><strong>I. + II. stup:</strong> osnovna mirovina iz I. stupa (staž od 2002. računa se s faktorom oko 0,75) uz dodatak od
+                27 %, plus doživotna mirovina iz II. stupa preko MOD-a. Moguće samo ako je osnovna mirovina veća od najniže.</li>
+              <li><strong>Kako odlučiti:</strong> HZMO i REGOS prije odluke šalju informativni izračun obje mogućnosti. Izaberite onu s
+                većim ukupnim iznosom; ako je razlika mala, razmislite i o vrsti mirovine u MOD-u (npr. obiteljskoj).</li>
+              <li><strong>Odluka je trajna.</strong> Izjava se daje u Mirovinskom informativnom centru, u FINA-i ili putem e-usluge „Odabir mirovine“.</li>
+            </ul>
+            <div style={{ marginTop: 10, fontSize: 12, color: C.purple, fontWeight: 600 }}>
+              → Okvirnu usporedbu za svoje podatke napravite u kalkulatoru „Samo I. ili I. + II.“ (izbornik Odluke pred mirovinu).
             </div>
           </Card>
 
@@ -4286,21 +4191,18 @@ function EduView() {
                 { pravo: "Pravo na uvid u stanje računa",
                   kako: "e-Građani portal, REGOS web, godišnji izviještaj poštom",
                   izvor: "ZOMF čl. 70." },
-                { pravo: "Pravo izbora OMF fonda i kategorije",
-                  kako: "FINA šalter, REGOS portal, e-Građani — jednom godišnje (kategorija), češće (fond)",
-                  izvor: "ZOMF čl. 55." },
-                { pravo: "Pravo prijenosa u drugi fond (bez naknade nakon 3 god.)",
-                  kako: "Zahtjev REGOS-u, bez naknade za izlaz po isteku 3 god. članstva",
-                  izvor: "ZOMF čl. 56." },
+                { pravo: "Pravo izbora i promjene fonda i kategorije",
+                  kako: "FINA, Mirovinski informativni centri ili e-Građani (pravila i rokovi na regos.hr)",
+                  izvor: "ZOMF" },
                 { pravo: "Pravo na informacije o ulaganjima fonda",
                   kako: "Statut fonda, godišnje i polugodišnje izvješće — javno objavljeno",
                   izvor: "ZOMF čl. 75." },
-                { pravo: "Pravo na jednokratnu isplatu do 20%",
-                  kako: "Zahtjev MOD-u pri umirovljenju. Uvjet: I. stup mirovina > najniža mirovina",
-                  izvor: "ZOMF čl. 102a." },
-                { pravo: "Pravo na istup iz II. stupa (samo za dobrovoljne ulaznike)",
-                  kako: "Zahtjev REGOS-u pri ostvarivanju prava na mirovinu. Samo za osiguranike koji su 2002. imali 40–50 god.",
-                  izvor: "ZOMF čl. 104." },
+                { pravo: "Pravo na jednokratnu isplatu do 20 %",
+                  kako: "Pri umirovljenju, ako je osnovna mirovina iz I. stupa veća od 115 % najniže mirovine",
+                  izvor: "Zakon o MOD-ovima" },
+                { pravo: "Pravo izbora mirovine samo iz I. stupa",
+                  kako: "Svi u oba stupa, izjavom pri ostvarivanju starosne ili prijevremene mirovine (od 2019.)",
+                  izvor: "ZOMO" },
                 { pravo: "Pravo nasljednika na kapitalizirana sredstva",
                   kako: "Pravomoćno Rješenje o nasljeđivanju — REGOS isplaćuje zakonskim nasljednicima",
                   izvor: "ZOMF čl. 103." },
@@ -4382,7 +4284,7 @@ function Stup3View({ user, onAuthRequired }) {
         padding: "20px 24px", marginBottom: 20, color: "#fff", display: "flex", gap: 24, flexWrap: "wrap" }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, color: "#9fefc0", fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.08em", marginBottom: 6 }}>Državni poticaj (DPS) — jedinstven u HR</div>
+            letterSpacing: "0.08em", marginBottom: 6 }}>Državni poticaj (DPS)</div>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.7 }}>
             Hrvatska država daje <strong style={{ color: "#7bffb0" }}>15% od vaše godišnje uplate</strong> besplatno — do
             maksimalnih <strong style={{ color: "#7bffb0" }}>{DPS_MAX.toFixed(2)} EUR godišnje</strong>.
@@ -4431,7 +4333,7 @@ function Stup3View({ user, onAuthRequired }) {
                 { upTo: 40, color: C.green, label: "Dugo — maksimalan učinak" },
               ]}
               dynamicExplain={v => `Za ${v} god. akumulirate ukupno ${fmt(kapital)} EUR. Sama složena kamata i DPS dodaju ${fmt(kapital - uplata*12*v)} EUR na vaše direktne uplate.`}
-              explain={<div><p style={{ fontSize: 12, lineHeight: 1.7, color: C.slate }}>Sredstva su dostupna od 55. godine. Raniji start = eksponencijalno više novca zbog složene kamate. Čak i 5 godina više štednje može udvostručiti krajnji kapital.</p></div>}
+              explain={<div><p style={{ fontSize: 12, lineHeight: 1.7, color: C.slate }}>Sredstva su dostupna od 55. godine. Što ranije počnete, to više zarađuje složena kamata: kamata se računa i na prethodno zarađenu kamatu.</p></div>}
             />
             <SmartParam icon="📈" title="Godišnji prinos fonda" value={prinos} min={0.01} max={0.10} step={0.005}
               format={v => `${(v*100).toFixed(1)}%`} onChange={setPrinos}
@@ -4441,7 +4343,7 @@ function Stup3View({ user, onAuthRequired }) {
                 { upTo: 0.10,  color: C.blue,  label: "Optimistično" },
               ]}
               dynamicExplain={v => `Uz ${(v*100).toFixed(1)}% prinos, na ${god} god. štednje prinos generira ${fmt(kapital - uplata*12*god - dps_total)} EUR iznad direktnih uplata i DPS-a.`}
-              explain={<div><p style={{ fontSize: 12, lineHeight: 1.7, color: C.slate }}>Dobrovoljni mirovinski fondovi ulažu konzervativnije od II. stupa — manji udio dionica. Prosječni prinos HR DMF-ova 2010.–2024. bio je 4–6% godišnje.</p></div>}
+              explain={<div><p style={{ fontSize: 12, lineHeight: 1.7, color: C.slate }}>Dobrovoljni fondovi razlikuju se po strategiji ulaganja (udjelu dionica). Prinos nije zajamčen; povijesne prinose pojedinih fondova možete usporediti na hanfa.hr i stranicama društava.</p></div>}
             />
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 500, color: C.slate, marginBottom: 8 }}>
@@ -4480,7 +4382,7 @@ function Stup3View({ user, onAuthRequired }) {
               <ResultBox label={`Akumulirani kapital (${god} god.)`} value={`${fmt(kapital)} EUR`} color={C.green} big />
               <ResultBox label="Ukupni DPS kroz karijeru" value={`${fmt(dps_total)} EUR`} color={C.gold} />
               <ResultBox label="Vaše direktne uplate" value={`${fmt(uplata*12*god)} EUR`} color={C.blue} />
-              <ResultBox label="Prinos + DPS bonus" value={`${fmt(kapital - uplata*12*god)} EUR`} color={C.purple} />
+              <ResultBox label="Prinos, DPS i uplate poslodavca" value={`${fmt(kapital - uplata*12*god)} EUR`} color={C.purple} />
             </div>
             <div style={{ padding: "10px 12px", background: C.greenL, borderRadius: 9, fontSize: 12 }}>
               <div style={{ fontWeight: 700, color: C.green }}>DPS je "besplatni novac" od države:</div>
@@ -4506,8 +4408,8 @@ function Stup3View({ user, onAuthRequired }) {
             <div style={{ color: C.goldL, fontSize: 11, fontWeight: 700, marginBottom: 10, textTransform: "uppercase" }}>Prednosti III. stupa vs. obična štednja</div>
             {[
               ["DPS — besplatni državni bonus", `+${fmt(dps_total)} EUR kroz karijeru`],
-              ["Bez poreza na prihod od kapitala", "Obična štednja: 10% porez na kamate"],
-              ["Prinos fonda > bankarska štednja", "Prosj. 4–6% vs. 0.5–2% bankarski depozit"],
+              ["Bez poreza na prinos tijekom štednje", "Obična štednja: 12 % porez na kamate"],
+              ["Dugoročno viši očekivani prinos od depozita", "Ali bez jamstva prinosa"],
               ["Porezna olakšica za poslodavca", "Do 804 EUR/god. neoporezivo"],
             ].map(([k,v],i) => (
               <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 8px",
@@ -4528,23 +4430,34 @@ function InvalidskaView() {
   const [pvb, setPvb] = useState(1.0);
   const [staz, setStaz] = useState(25);
   const [vrsta, setVrsta] = useState("potpuna");
-  const [clan, setClan] = useState("bracni");
+  const [clanova, setClanova] = useState(1);
 
   // MF od 1.1.2026.: potpuna = 1.1, djelomična = 0.9
   const mf_map = { potpuna: 1.1, djelomicna: 0.9, profesionalna: 0.9 };
   const mf = mf_map[vrsta] || 1.0;
   const res = calcStup1({ pvb, staz, pf: 1.0, mf, avm: AVM });
+  const resD = saDodatkom(res);
 
-  // Obiteljska mirovina: % od osiguranikove mirovine
-  const obitelj_pct = { bracni: 0.70, djeca1: 0.70, djeca2: 0.80, djeca3: 0.90, roditelji: 0.50 };
-  const obiteljna = res.efektivna * (obitelj_pct[clan] || 0.70);
+  // Obiteljska mirovina: mirovinski faktor ovisi o broju članova obitelji (ZOMO čl. 85.)
+  const MF_OBITELJ = { 1: 0.77, 2: 0.88, 3: 1.0, 4: 1.1 };
+  const mfObitelj = MF_OBITELJ[clanova];
+  const obiteljna = saDodatkom(calcStup1({ pvb, staz, pf: 1.0, mf: mfObitelj, avm: AVM })).ukupno;
+  const obitelj1 = saDodatkom(calcStup1({ pvb, staz, pf: 1.0, mf: 0.77, avm: AVM })).ukupno;
+  const dioObiteljske = Math.min(Math.max(obitelj1 * 0.27, 3 * AVM), obitelj1 * 0.5);
 
   return (
     <div className="fadeIn">
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, marginBottom: 4 }}>Invalidska i obiteljska mirovina</h2>
-        <p style={{ color: C.slateL, fontSize: 13 }}>ZOMO · Izmjene MF od 1.1.2026. (HZMO)</p>
+        <p style={{ color: C.slateL, fontSize: 13 }}>Zaštita kad osiguranik ne može raditi ili umre</p>
       </div>
+
+      <Ukratko color={C.red}>
+        <strong>Invalidska mirovina</strong> pripada vam ako zbog bolesti ili ozljede izgubite radnu sposobnost. Računa se kao
+        starosna, ali s mirovinskim faktorom 1,1 (potpuni gubitak) ili 0,9 (djelomični gubitak).{" "}
+        <strong>Obiteljska mirovina</strong> pripada bračnom drugu, djeci i uzdržavanim roditeljima umrlog osiguranika ili
+        umirovljenika; iznos ovisi o broju članova obitelji koji je primaju.
+      </Ukratko>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         {/* Invalidska */}
@@ -4553,18 +4466,17 @@ function InvalidskaView() {
             padding: "16px 20px", marginBottom: 14, color: "#fff" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#ffaaaa", textTransform: "uppercase", marginBottom: 6 }}>Invalidska mirovina</div>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", lineHeight: 1.7 }}>
-              Pravo na invalidsku mirovinu stječe osiguranik koji izgubi radnu sposobnost. Formula je ista kao
-              za starosnu mirovinu — razlikuje se samo <strong style={{ color: "#ffaaaa" }}>mirovinski faktor (MF)</strong>.
-              Od 1.1.2026. MF-ovi su povećani novim ZOMO-om.
+              Formula je ista kao za starosnu mirovinu, a razlikuje se samo <strong style={{ color: "#ffaaaa" }}>mirovinski faktor (MF)</strong>.
+              Od 1.1.2026. povećan je na 1,1 (potpuni gubitak) i 0,9 (djelomični gubitak radne sposobnosti).
             </p>
           </div>
           <Card style={{ marginBottom: 14 }}>
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>Vrsta invalidske mirovine</h3>
             {[
               { v: "potpuna", emoji: "🚫", l: "Potpuni gubitak radne sposobnosti", mf: "MF = 1,1 (od 1.1.2026.)", boja: C.red,
-                opis: "Osiguranik ne može raditi ni jedan posao. Mirovina se isplaćuje do navršenja dobi za starosnu mirovinu, kada se automatski pretvara u starosnu." },
-              { v: "djelomicna", emoji: "⚕️", l: "Djelomični gubitak radne sposobnosti / profesionalna nesposobnost", mf: "MF = 0,9 (od 1.1.2026.)", boja: C.amber,
-                opis: "Osiguranik može raditi u smanjenom opsegu (do pola radnog vremena). Od 1.1.2026. dozvoljen rad uz isplatu rente do 3,5h/dan." },
+                opis: "Osiguranik ne može raditi. Od 1.1.2026. smije raditi do 3,5 sata dnevno uz isplatu mirovine." },
+              { v: "djelomicna", emoji: "⚕️", l: "Djelomični gubitak radne sposobnosti", mf: "MF = 0,9 (od 1.1.2026.)", boja: C.amber,
+                opis: "Osiguranik može raditi na drugom, primjerenom poslu. Mirovina se može primati uz rad." },
             ].map(o => (
               <button key={o.v} onClick={() => setVrsta(o.v)}
                 style={{ width: "100%", marginBottom: 8, padding: "10px 12px",
@@ -4582,13 +4494,13 @@ function InvalidskaView() {
           </Card>
           <Card>
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>Parametri osiguranika</h3>
-            <SmartParam icon="💰" title="PVB (prosječni vrednosni bodovi)" value={pvb} min={0.3} max={3.0} step={0.05}
+            <SmartParam icon="💰" title="Plaća u odnosu na prosjek RH (PVB)" value={pvb} min={0.3} max={3.8} step={0.05}
               format={v => v.toFixed(2)} onChange={setPvb} zones={[
                 { upTo: 0.99, color: C.amber, label: "Ispod prosjeka" },
                 { upTo: 1.09, color: C.green, label: "Prosjek" },
-                { upTo: 3.0,  color: C.blue,  label: "Iznad prosjeka" },
+                { upTo: 3.8,  color: C.blue,  label: "Iznad prosjeka" },
               ]}
-              dynamicExplain={v => `PVB ${v.toFixed(2)} uz ${staz} god. staža → invaldiska mirovina: ${fmt(calcStup1({pvb:v,staz,pf:1,mf,avm:AVM}).efektivna)} EUR/mj.`}
+              dynamicExplain={v => `PVB ${v.toFixed(2)} znači plaću oko ${fmt(v * PROSJ_BRUTO, 0)} EUR bruto (prema prosjeku 2025.).`}
               explain={null} />
             <SmartParam icon="📅" title="Mirovinski staž u trenutku invalidnosti" value={staz} min={1} max={45} step={1}
               format={v => `${v} god.`} onChange={setStaz} zones={[
@@ -4596,15 +4508,15 @@ function InvalidskaView() {
                 { upTo: 14, color: C.amber, label: "Kratki staž" },
                 { upTo: 45, color: C.green, label: "Dobar staž" },
               ]}
-              dynamicExplain={v => `Sa ${v} god. staža i PVB ${pvb.toFixed(2)}: invalidska mirovina = ${fmt(calcStup1({pvb,staz:v,pf:1,mf,avm:AVM}).efektivna)} EUR/mj.`}
-              explain={<div><p style={{ fontSize:12, lineHeight:1.7, color:C.slate }}>Za invalidnost uzrokovanu bolešću potrebno je određeno „čekalno" razdoblje staža ovisno o dobi. Za ozljedu na radu i profesionalnu bolest pravo nastaje bez obzira na staž.</p></div>} />
+              dynamicExplain={v => `Sa ${v} god. staža najniža mirovina iznosi ${fmt(MIN_MIROVINA_FAKTOR * AVM * v * mf)} EUR.`}
+              explain={<div><p style={{ fontSize:12, lineHeight:1.7, color:C.slate }}>Ako je invalidnost posljedica bolesti ili ozljede izvan rada, potreban je minimalni staž koji ovisi o dobi (otprilike trećina radnog vijeka). Kod ozljede na radu ili profesionalne bolesti staž nije uvjet, a najniža mirovina računa se kao za 40 godina staža.</p></div>} />
             <div style={{ padding:"10px 12px", background: vrsta==="potpuna" ? C.redL : C.amberL, borderRadius:9, textAlign:"center" }}>
               <div style={{ fontSize:11, color:C.slate }}>Invalidska mirovina / mj.</div>
               <div style={{ fontSize:26, fontWeight:800, color: vrsta==="potpuna" ? C.red : C.amber, fontFamily:"'Playfair Display',serif" }}>
-                {fmt(res.efektivna)} EUR
+                {fmt(resD.ukupno)} EUR
               </div>
               <div style={{ fontSize:11, color:C.slateL, marginTop:2 }}>
-                MF = {mf.toFixed(1)} · Osobni bodovi: {res.ob.toFixed(3)}
+                MF = {mf.toFixed(1).replace(".", ",")} · {resD.najniza ? "najniža mirovina" : "uključen dodatak 27 %"}
               </div>
             </div>
           </Card>
@@ -4616,62 +4528,63 @@ function InvalidskaView() {
             padding: "16px 20px", marginBottom: 14, color: "#fff" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.goldL, textTransform: "uppercase", marginBottom: 6 }}>Obiteljska mirovina</div>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", lineHeight: 1.7 }}>
-              Pravo na obiteljsku mirovinu stječu članovi obitelji umrlog osiguranika ili korisnika mirovine.
-              Iznos je postotak od mirovine koju bi osiguranik primao (ili je primao).
+              Pravo stječu članovi obitelji umrlog osiguranika ili korisnika mirovine. Iznos se računa iz mirovine
+              umrlog, s mirovinskim faktorom koji ovisi o broju članova obitelji: 0,77 / 0,88 / 1,0 / 1,1.
             </p>
           </div>
           <Card style={{ marginBottom: 14 }}>
-            <h3 style={{ fontSize: 14, marginBottom: 14 }}>Tko ima pravo i koliki postotak?</h3>
-            {[
-              { v: "bracni", emoji: "💑", l: "Bračni / izvanbračni drug", pct: "70%",
-                uvjeti: "Navršenih 50 god. ili invalidnost, ili briga za djecu s pravom na obiteljsku mirovinu" },
-              { v: "djeca1", emoji: "👶", l: "1 dijete (bez oba roditelja)", pct: "70%",
-                uvjeti: "Do 15 god. ili do kraja školovanja (max. 26 god.), ili trajno bez radne sposobnosti" },
-              { v: "djeca2", emoji: "👦👧", l: "2 djece (bez oba roditelja)", pct: "80%",
-                uvjeti: "Isti uvjeti kao za 1 dijete, postotak se dijeli ravnomjerno" },
-              { v: "djeca3", emoji: "👨‍👧‍👦", l: "3+ djece (bez oba roditelja)", pct: "90%",
-                uvjeti: "Maksimalni postotak za djecu bez oba roditelja" },
-              { v: "roditelji", emoji: "👴👵", l: "Roditelji / braća / sestre", pct: "50%",
-                uvjeti: "Ako ih je osiguranik uzdržavao i nemaju dovoljno vlastitih prihoda" },
-            ].map(o => (
-              <button key={o.v} onClick={() => setClan(o.v)}
-                style={{ width: "100%", marginBottom: 6, padding: "8px 12px",
-                  border: `2px solid ${clan===o.v ? C.blue : C.border}`,
-                  borderRadius: 9, background: clan===o.v ? C.blueL : C.white, cursor: "pointer", textAlign: "left" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <span style={{ fontSize:12, fontWeight:700, color:C.navy }}>{o.emoji} {o.l}</span>
-                  <span style={{ fontSize:13, fontWeight:800, color:C.blue }}>{o.pct}</span>
-                </div>
-                <div style={{ fontSize:10, color:C.slateL, marginTop:3, lineHeight:1.4 }}>{o.uvjeti}</div>
-              </button>
-            ))}
+            <h3 style={{ fontSize: 14, marginBottom: 10 }}>Tko ima pravo?</h3>
+            <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, paddingLeft: 18, margin: "0 0 12px" }}>
+              <li><strong>Bračni ili izvanbračni drug:</strong> ako je do smrti navršio 50 godina (s navršenih 45 pravo stječe s 50),
+                ako je potpuno nesposoban za rad ili ako skrbi o djeci koja imaju pravo na obiteljsku mirovinu.</li>
+              <li><strong>Djeca:</strong> do 15. godine, a za vrijeme redovitog školovanja najdulje do 26. godine; trajno ako su
+                potpuno nesposobna za rad.</li>
+              <li><strong>Roditelji, braća i sestre:</strong> ako ih je umrli uzdržavao.</li>
+            </ul>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 6 }}>Koliko članova obitelji prima mirovinu?</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {[1, 2, 3, 4].map(n => (
+                <button key={n} onClick={() => setClanova(n)}
+                  style={{ padding: "8px 4px", border: `2px solid ${clanova === n ? C.blue : C.border}`, borderRadius: 9,
+                    background: clanova === n ? C.blueL : C.white, cursor: "pointer" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: C.navy }}>{n === 4 ? "4+" : n}</div>
+                  <div style={{ fontSize: 10, color: C.slateL }}>MF {MF_OBITELJ[n].toFixed(2).replace(".", ",")}</div>
+                </button>
+              ))}
+            </div>
           </Card>
           <Card>
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>Iznos obiteljske mirovine</h3>
-            <SmartParam icon="💰" title="PVB umrlog osiguranika" value={pvb} min={0.3} max={3.0} step={0.05}
+            <SmartParam icon="💰" title="Plaća umrlog u odnosu na prosjek RH (PVB)" value={pvb} min={0.3} max={3.8} step={0.05}
               format={v => v.toFixed(2)} onChange={setPvb} zones={[
-                { upTo: 0.99, color: C.amber }, { upTo: 1.09, color: C.green }, { upTo: 3.0, color: C.blue }
+                { upTo: 0.99, color: C.amber }, { upTo: 1.09, color: C.green }, { upTo: 3.8, color: C.blue }
               ]}
-              dynamicExplain={v => `Osnovna mirovina: ${fmt(calcStup1({pvb:v,staz,pf:1,mf:1,avm:AVM}).efektivna)} EUR → Obiteljska (${Math.round((obitelj_pct[clan]||0.7)*100)}%): ${fmt(calcStup1({pvb:v,staz,pf:1,mf:1,avm:AVM}).efektivna*(obitelj_pct[clan]||0.7))} EUR`}
+              dynamicExplain={v => `PVB ${v.toFixed(2)} znači plaću oko ${fmt(v * PROSJ_BRUTO, 0)} EUR bruto (prema prosjeku 2025.).`}
               explain={null} />
-            <SmartParam icon="📅" title="Staž osiguranika" value={staz} min={1} max={45} step={1}
+            <SmartParam icon="📅" title="Staž umrlog osiguranika" value={staz} min={1} max={45} step={1}
               format={v => `${v} god.`} onChange={setStaz} zones={[
                 { upTo: 14, color: C.amber }, { upTo: 45, color: C.green }
               ]}
-              dynamicExplain={v => `Osnovna mirovina (PVB ${pvb.toFixed(2)}, ${v} god.): ${fmt(calcStup1({pvb,staz:v,pf:1,mf:1,avm:AVM}).efektivna)} EUR`}
+              dynamicExplain={v => `Uvjet: umrli je imao najmanje 5 godina staža osiguranja ili 10 godina mirovinskog staža, ili je bio umirovljenik.`}
               explain={null} />
             <div style={{ padding:"10px 12px", background: C.blueL, borderRadius:9, textAlign:"center", marginBottom:10 }}>
-              <div style={{ fontSize:11, color:C.slate }}>Obiteljska mirovina / mj.</div>
+              <div style={{ fontSize:11, color:C.slate }}>Obiteljska mirovina / mj. (ukupno za sve članove)</div>
               <div style={{ fontSize:26, fontWeight:800, color:C.blue, fontFamily:"'Playfair Display',serif" }}>
                 {fmt(obiteljna)} EUR
               </div>
               <div style={{ fontSize:11, color:C.slateL, marginTop:2 }}>
-                {Math.round((obitelj_pct[clan]||0.7)*100)}% od {fmt(res.efektivna)} EUR (osnovna mirovina)
+                MF {String(mfObitelj).replace(".", ",")} · uključen dodatak 27 % (osim kad se isplaćuje najniža)
               </div>
+            </div>
+            <div style={{ fontSize:11, color:C.slate, lineHeight:1.6, padding:"8px 10px", background:C.greenL, borderRadius:8, marginBottom: 10 }}>
+              <strong>Imate vlastitu mirovinu?</strong> Udovica ili udovac s navršenih 65 godina, koji je jedini korisnik, može uz svoju
+              mirovinu primati i <strong>dio obiteljske mirovine</strong>: 27 % obiteljske mirovine za jednog člana
+              (ovdje oko {fmt(dioObiteljske)} EUR), ako ukupne mirovine ne prelaze 80 AVM ({fmt(80 * AVM, 0)} EUR). Druga mogućnost je
+              izabrati veću od dviju mirovina.
             </div>
             <div style={{ fontSize:11, color:C.slateL, lineHeight:1.6, padding:"8px 10px", background:C.bg, borderRadius:8 }}>
               ⚠ Ovi iznosi su aproksimativni. Stvarni uvjeti i iznosi ovisni su o konkretnim okolnostima.
-              Za točne podatke obratite se HZMO-u ili koristite mojamirovina.hr (e-Građani).
+              Za točne podatke obratite se HZMO-u ili zatražite informativni izračun u e-Građanima (HZMO e-usluge).
             </div>
           </Card>
         </div>
@@ -4683,40 +4596,55 @@ function InvalidskaView() {
 // ── "KOLIKO MI NEDOSTAJE?" PLANER ──────────────────────────────────────────
 function PlanerView() {
   const [zeljenaMirovina, setZeljenaMirovina] = useState(900);
-  const [trenutnaPlacha, setTrenutnaPlaca] = useState(1300);
+  const [trenutnaPlacha, setTrenutnaPlaca] = useState(PROSJ_BRUTO);
   const [trenutniStaz, setTrenutniStaz] = useState(20);
   const [dob, setDob] = useState(42);
   const [spol, setSpol] = useState("M");
-  const [prinos2, setPrinos2] = useState(0.055);
+  // Realni prinos (iznad rasta plaća), da projekcija bude u današnjem novcu kao i I. stup
+  const [prinos2] = useState(0.03);
 
-  const mirDob = spol === "M" ? 65 : 64;
-  const godDoMir = Math.max(0, mirDob - dob);
+  const mirDob = dobZaStarosnu(spol, TEKUCA_GODINA - dob);
+  const godDoMir = Math.max(0, Math.ceil(mirDob - dob));
   const buduciStaz = trenutniStaz + godDoMir;
-  const pvb_est = trenutnaPlacha / 1300;
-  const r1 = calcStup1({ pvb: pvb_est, staz: buduciStaz, pf: 1, mf: 1, avm: AVM });
-  const k2 = calcStup2FV({ bruto_placa: trenutnaPlacha, god_stednje: godDoMir, neto_prinos: prinos2 });
-  const renta2 = rentaDozivotna(k2 * 0.8);
-  const dod = r1.efektivna * 0.27;
-  const ukupno = r1.efektivna + dod + renta2;
+  const pvb_est = trenutnaPlacha / PROSJ_BRUTO;
+  const godUStupu2 = Math.min(trenutniStaz, TEKUCA_GODINA - 2002) + godDoMir;
+  const projekcija = (pvb, staz, godII, pf = 1) => {
+    const k = calcStup2FV({ bruto_placa: pvb * PROSJ_BRUTO, god_stednje: godII, neto_prinos: prinos2 });
+    const renta = rentaDozivotna(k * 0.8);
+    return { k, ...kombiniranaMirovina({ pvb, staz, stazOd2002: Math.min(staz, godII), pf, rentaII: renta }) };
+  };
+  const proj = projekcija(pvb_est, buduciStaz, godUStupu2);
+  const r1 = { efektivna: proj.osnovna };
+  const k2 = proj.k;
+  const renta2 = proj.renta;
+  const dod = proj.dodatak;
+  const ukupno = proj.ukupno;
   const gap = zeljenaMirovina - ukupno;
   const gap_poz = gap > 0;
 
-  // Što treba promijeniti za doći do željene mirovine
-  const potrebnaPvb = zeljenaMirovina / (buduciStaz * 1.27 * AVM);
-  const potrebnaPlaca = potrebnaPvb * 1300;
-  const potrebniStaz = zeljenaMirovina / (pvb_est * 1.27 * AVM);
-  const potrebniStup3_god = dps => {
+  // Što treba promijeniti za doći do željene mirovine (mirovina raste približno razmjerno plaći)
+  const potrebnaPvb = pvb_est * zeljenaMirovina / ukupno;
+  const potrebnaPlaca = potrebnaPvb * PROSJ_BRUTO;
+  const dodatneGodine = (() => {
+    for (let g = 0; g <= 15; g++) {
+      if (projekcija(pvb_est, buduciStaz + g, godUStupu2 + g, 1 + 0.054 * g).ukupno >= zeljenaMirovina) return g;
+    }
+    return null;
+  })();
+  const potrebniStup3_god = () => {
     if (!gap_poz) return 0;
-    const r = 0.055 / 12; const n = godDoMir * 12;
+    const r = 0.05 / 12; const n = Math.max(1, godDoMir) * 12;
     const k_pot = gap * 18 * 12;
-    return n === 0 ? k_pot : k_pot * r / (Math.pow(1+r,n)-1);
+    const ukupnaUplata = k_pot * r / (Math.pow(1 + r, n) - 1);
+    const maxSPoticajem = (DPS_MAX_UPLATA_GOD / 12) * (1 + DPS_STOPA);
+    return ukupnaUplata <= maxSPoticajem ? ukupnaUplata / (1 + DPS_STOPA) : ukupnaUplata - (DPS_MAX_UPLATA_GOD / 12) * DPS_STOPA;
   };
   const stup3_mj = potrebniStup3_god();
 
   const progressData = [
     { name: "I. stup", value: Math.round(r1.efektivna), fill: C.navy },
-    { name: "Dodatak 27%", value: Math.round(dod), fill: C.gold },
-    { name: "II. stup renta", value: Math.round(renta2), fill: C.purple },
+    { name: "Dodatak 27 %", value: Math.round(dod), fill: C.gold },
+    { name: "II. stup", value: Math.round(renta2), fill: C.purple },
     { name: gap_poz ? "Nedostaje ↑" : "Višak ↑", value: Math.abs(Math.round(gap)), fill: gap_poz ? C.red+"66" : C.green+"66" },
   ];
 
@@ -4731,7 +4659,7 @@ function PlanerView() {
         <Card>
           <h3 style={{ fontSize: 14, marginBottom: 16 }}>Vaša situacija</h3>
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            {[["M","Muškarac 🧔","Puna dob: 65 god."],["Ž","Žena 👩","Puna dob: ~64 god."]].map(([v,l,s]) => (
+            {[["M","Muškarac","Starosna mirovina s 65 god."],["Ž","Žena",`Za vas: s ${fmtDob(dobZaStarosnu("Ž", TEKUCA_GODINA - dob))}`]].map(([v,l,s]) => (
               <button key={v} onClick={() => setSpol(v)} style={{
                 flex:1, padding:"8px 10px", border:`2px solid ${spol===v ? C.navy : C.border}`,
                 borderRadius:9, background:spol===v ? C.navy : C.white,
@@ -4744,37 +4672,36 @@ function PlanerView() {
           <SmartParam icon="🎯" title="Željena mirovina" value={zeljenaMirovina} min={300} max={3000} step={50}
             format={v => `${v.toLocaleString("hr-HR")} EUR/mj.`} onChange={setZeljenaMirovina}
             zones={[
-              { upTo: 499,  color: C.red,    label: "Ispod najniže mirovine" },
               { upTo: 799,  color: C.amber,  label: "Skromna mirovina" },
               { upTo: 1199, color: C.gold,   label: "Prosječna" },
               { upTo: 1799, color: C.green,  label: "Udobna mirovina" },
               { upTo: 3000, color: C.blue,   label: "Visoka mirovina" },
             ]}
-            dynamicExplain={v => `Stopa zamjene: ${pct(v/trenutnaPlacha)} vaše sadašnje bruto plaće.`}
+            dynamicExplain={v => `To je ${pct(v/trenutnaPlacha)} vaše sadašnje bruto plaće. Prosječna mirovina u Hrvatskoj znatno je niža od plaće, pa je razlika uobičajena.`}
             explain={null} />
           <SmartParam icon="💼" title="Trenutna bruto plaća" value={trenutnaPlacha} min={700} max={5000} step={50}
             format={v => `${v.toLocaleString("hr-HR")} EUR`} onChange={setTrenutnaPlaca}
             zones={[
               { upTo: 1099, color: C.amber }, { upTo: 1499, color: C.green }, { upTo: 5000, color: C.blue }
             ]}
-            dynamicExplain={v => `Procijenjeni PVB: ${(v/1300).toFixed(2)} (prosjek RH = 1.300 EUR)`}
+            dynamicExplain={v => `Vaša plaća je ${(v/PROSJ_BRUTO).toFixed(2)} prosječne bruto plaće u RH (2.016 EUR u 2025.). Kalkulator pretpostavlja da je tako bilo kroz cijelu karijeru.`}
             explain={null} />
           <SmartParam icon="📅" title="Trenutni mirovinski staž" value={trenutniStaz} min={0} max={45} step={1}
             format={v => `${v} god.`} onChange={setTrenutniStaz}
             zones={[
               { upTo: 14, color: C.amber }, { upTo: 29, color: C.gold }, { upTo: 45, color: C.green }
             ]}
-            dynamicExplain={v => `Do mirovine ostaje još ${godDoMir} god. Na kraju karijere imat ćete ukupno ${v + godDoMir} god. staža.`}
+            dynamicExplain={v => `Do starosne mirovine ostaje još ${godDoMir} god. Na kraju karijere imat ćete oko ${v + godDoMir} god. staža.`}
             explain={null} />
-          <SmartParam icon="🎂" title="Trenutna dob" value={dob} min={18} max={64} step={1}
+          <SmartParam icon="🎂" title="Trenutna dob" value={dob} min={18} max={67} step={1}
             format={v => `${v} god.`} onChange={setDob}
             zones={[
               { upTo: 34, color: C.green, label: "Puno vremena za planiranje" },
               { upTo: 49, color: C.gold,  label: "Sredina karijere" },
               { upTo: 59, color: C.amber, label: "Bliže kraju karijere" },
-              { upTo: 64, color: C.red,   label: "Kratko do mirovine" },
+              { upTo: 67, color: C.red,   label: "Kratko do mirovine" },
             ]}
-            dynamicExplain={v => `Do mirovine (${mirDob} god.) preostaje ${Math.max(0,mirDob-v)} god.`}
+            dynamicExplain={v => `Starosna mirovina za vas: s ${fmtDob(mirDob)}. Preostaje još ${godDoMir} god.`}
             explain={null} />
         </Card>
 
@@ -4815,7 +4742,11 @@ function PlanerView() {
 
           {/* Decomposition */}
           <Card>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Struktura projektirane mirovine</div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Struktura projektirane mirovine</div>
+            <div style={{ fontSize: 10, color: C.slateL, marginBottom: 10, lineHeight: 1.5 }}>
+              Iznosi su u današnjem novcu. Pretpostavke: plaća prati prosjek RH, II. stup od 2002. (ili od početka rada) s realnim
+              prinosom 3 % godišnje iznad rasta plaća, 20 % kapitala podignuto jednokratno, uključen dodatak 27 % na osnovnu mirovinu.
+            </div>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={progressData} layout="vertical" margin={{ left: 80, right: 20 }}>
                 <XAxis type="number" tick={{ fontSize: 10 }} />
@@ -4835,18 +4766,15 @@ function PlanerView() {
               <h3 style={{ fontSize: 14, marginBottom: 14, color: C.navy }}>💡 Akcijski plan — što možete učiniti</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
-                  { emoji: "🌱", l: "III. stup (minimalna uplata za cilj)",
+                  { emoji: "🌱", l: "Mjesečna uplata u III. stup",
                     v: `${stup3_mj > 0 ? fmt(stup3_mj) : "Nije potrebno"} EUR/mj.`,
-                    opis: "Dopunska štednja uz DPS poticaj — najefikasniji put za popunjavanje razlike", color: C.green },
+                    opis: "Uz državni poticaj (15 % uplate, do 99,54 EUR godišnje) i 5 % prinosa pokriva razliku kroz 18 godina mirovine", color: C.green },
                   { emoji: "💼", l: "Potrebna plaća za željenu mirovinu",
                     v: `${fmt(potrebnaPlaca)} EUR bruto`,
-                    opis: `PVB ${potrebnaPvb.toFixed(2)} — ${((potrebnaPvb-1)*100).toFixed(0)}% ${potrebnaPvb > 1 ? "iznad" : "ispod"} prosjeka RH`, color: C.blue },
-                  { emoji: "📅", l: "Potrebni staž (uz sadašnju plaću)",
-                    v: `${Math.max(0,Math.ceil(potrebniStaz))} god.`,
-                    opis: potrebniStaz > buduciStaz ? `Trebate ${Math.ceil(potrebniStaz - buduciStaz)} god. više od planirane mirovine` : "Ostvarivo u planiranom roku", color: C.purple },
-                  { emoji: "⏳", l: "Razmislite o odgodi mirovine",
-                    v: godDoMir > 2 ? `+${(Math.min(24,godDoMir)*0.45).toFixed(1)}% za 2 god. odgode` : "N/A",
-                    opis: "Svaki mjesec odgode donosi +0,45% trajnog povećanja PF-a", color: C.gold },
+                    opis: `Prosječno kroz karijeru — ${Math.abs((potrebnaPvb-1)*100).toFixed(0)} % ${potrebnaPvb > 1 ? "iznad" : "ispod"} prosjeka RH`, color: C.blue },
+                  { emoji: "⏳", l: "Rad nakon starosne dobi",
+                    v: dodatneGodine === null ? "više od 15 god." : dodatneGodine === 0 ? "nije potrebno" : `${dodatneGodine} god. dulje`,
+                    opis: "Svaki mjesec rada nakon zakonske dobi trajno povećava mirovinu za 0,45 % (2 godine = +10,8 %), uz dodatni staž", color: C.gold },
                 ].map((it, i) => (
                   <div key={i} style={{ display:"flex", gap:12, padding:"10px 12px",
                     background: it.color+"0a", border:`1px solid ${it.color}22`, borderRadius:9 }}>
@@ -4883,228 +4811,161 @@ function PlanerView() {
 
 // ── USPOREDBA S NAJBOLJIM SUSTAVIMA ────────────────────────────────────────
 function UsporedbaSustaviView() {
-  const [placha, setPlacha] = useState(1300);
+  const [placha, setPlacha] = useState(PROSJ_BRUTO);
   const [stazGod, setStazGod] = useState(40);
 
-  const hr_m = calcStup1({ pvb: placha/1300, staz: stazGod, pf:1, mf:1, avm:AVM }).efektivna;
-  const hr_dod = hr_m * 0.27;
-  const hr_2 = rentaDozivotna(calcStup2FV({bruto_placa:placha,god_stednje:stazGod,neto_prinos:0.055})*0.8);
-  const hr_uk = hr_m + hr_dod + hr_2;
-  const hr_stopa = hr_uk / placha;
+  const hr_2 = rentaDozivotna(calcStup2FV({ bruto_placa: placha, god_stednje: stazGod, neto_prinos: 0.055 }) * 0.8);
+  const hr_k = kombiniranaMirovina({ pvb: placha / PROSJ_BRUTO, staz: stazGod, rentaII: hr_2 });
+  const hr_neto = calcNetoMirovina(hr_k.ukupno).neto;
+  const hr_stopa = hr_k.ukupno / placha;
 
   const sustavi = [
-    {
-      zemlja: "🇭🇷 Hrvatska", kod: "HR", mercer: "C+", stopa: hr_stopa, opis_stopa: `${pct(hr_stopa)} (I.+II.+Dod.)`,
-      boja: C.red, score: 55,
-      opis: "Miješani sustav: I. stup (generacijska solidarnost) + II. stup (individualna kapitalizacija). Prosječna stopa zamjene ~38% od I. stupa samo; s II. stupu i dodatkom doseže ~50%.",
-      doprinos: "20% (15% I. + 5% II.)", dob: "65 M / ~64 Ž",
-      prednosti: ["II. stup osobna imovina", "Nasljedivo (uz uvjete)", "DPS za III. stup"],
-      slabosti: ["Niska stopa zamjene I. stupa", "Demografski pritisak", "Nema garancije kapitala u doživotnoj renti"],
-    },
-    {
-      zemlja: "🇳🇱 Nizozemska", kod: "NL", mercer: "A (85.4)", stopa: 0.96, opis_stopa: "~96% (neto)",
-      boja: C.blue, score: 85.4,
-      opis: "Tri stupa: AOW (osnovna državna, flat-rate ~12.000 EUR/god./par), obavezne strukovne mirovine (DB→DC do 2028.) i osobna štednja. Cjelokupni sustav vodi k zamjeni 70–100% dohotka.",
-      doprinos: "~28% (poslodavac dominira)", dob: "67 (→ 67g.3mj. 2028.)",
-      prednosti: ["Najviša stopa zamjene na svijetu", "Obavezne strukovne mirovine za gotovo sve", "Indeksacija uz inflaciju"],
-      slabosti: ["Visoki doprinosi", "Prelazak DB→DC uvodi investicijski rizik", "Kompleksni sustav"],
-    },
-    {
-      zemlja: "🇩🇰 Danska", kod: "DK", mercer: "A (82.3)", stopa: 0.80, opis_stopa: "~80% (neto)",
-      boja: "#c41e3a", score: 82.3,
-      opis: "Tri stupa: Folkepension (osnovna), ATP (obavezna DC za sve zaposlene), LifF / LD (privatne obavezne DC mirovine). Kombinacija socijalnog osiguranja i kapitalzirane štednje.",
-      doprinos: "~12-15% + ATP", dob: "67 (vezana uz očekivani životni vijek)",
-      prednosti: ["Visoka pokrivenost svih radnika", "Transparentan DC sustav", "Sigurna osnovna mirovina za sve"],
-      slabosti: ["Visoki porezi za financiranje", "Dob umirovljenja raste s očekivanim vijekom", "Složeni sustav ATP/LifF"],
-    },
-    {
-      zemlja: "🇮🇸 Island", kod: "IS", mercer: "A (84.0)", stopa: 0.95, opis_stopa: "~95%+ (neto)",
-      boja: "#003897", score: 84.0,
-      opis: "Obavezna trofazna mirovinska štednja: državna (Tryggingastofnun), obavezna strukovne (min. 15,5% plaće), privatna dobrovoljno. Visoke obavezne stope doprinosa jamče visoke mirovine.",
-      doprinos: "12% radnik + 11,5% poslodavac (obavezno)", dob: "67",
-      prednosti: ["Najviša stopa zamjene OECD", "Obavezna visoka kapitalizacija", "Nasljedive mirovine"],
-      slabosti: ["Visoki doprinosi (23.5%!)", "Mali tržišni fond podložan vanjskim šokovima", "Geografska izoliranost"],
-    },
-    {
-      zemlja: "🇦🇺 Australija", kod: "AU", mercer: "B+ (76.7)", stopa: 0.52, opis_stopa: "~52% (bruto, s Superannuation)",
-      boja: "#00843D", score: 76.7,
-      opis: "Superannuation — obavezna osobna mirovinska štednja (DC). Trenutno 11,5% plaće od poslodavca → raste na 12% do 2025. Vlada pruža minimalnu Age Pension za one s niskim kapitalom.",
-      doprinos: "11.5% poslodavac (→12%)", dob: "67",
-      prednosti: ["Vlastiti kapital, potpuno nasljediv", "Porezne olakšice na prinos", "Iznosi rastu s plaćom"],
-      slabosti: ["Niska osnovna mirovina (samo za siromašne)", "Tržišni rizik", "Nedovoljna pokrivenost za niske plaće"],
-    },
-    {
-      zemlja: "🇸🇬 Singapur", kod: "SG", mercer: "A (78.7)", stopa: 0.65, opis_stopa: "~65% (CPF)",
-      boja: "#EF3340", score: 78.7,
-      opis: "CPF (Central Provident Fund) — obavezni vlastiti račun. Dio CPF-a ide za mirovinu (CPF-RA), dio za zdravstvo (Medisave) i stanovanje. Zajamčeni minimalni prinos od 4% godišnje!",
-      doprinos: "37% ukupno (20% radnik + 17% poslodavac)", dob: "65",
-      prednosti: ["Zajamčeni minimalni prinos 4%", "Nasljedivo", "Jedan račun za mirovinu, zdravstvo i stan"],
-      slabosti: ["Visoki doprinosi (37%!)", "Ograničena fleksibilnost isplate", "Ovisi o fiskalnoj politici države"],
-    },
+    { zemlja: "🇭🇷 Hrvatska", kod: "HR", mercer: "B (68,7)", score: 68.7, boja: C.red,
+      opis: "Miješani sustav: I. stup (generacijska solidarnost, 15 % plaće) i II. stup (osobna štednja u fondu, 5 % plaće), uz dobrovoljni III. stup s državnim poticajem.",
+      doprinos: "20 % (15 % I. + 5 % II.)", dob: "65 M / 64 Ž (2026.), izjednačavanje do 2030.",
+      prednosti: ["Dobar nadzor i transparentnost (Mercer: integritet A)", "II. stup je osobna imovina", "Državni poticaj za III. stup"],
+      slabosti: ["Mirovine niske u odnosu na plaće", "Nepovoljan omjer radnika i umirovljenika", "Malo strukovnih (poslodavačkih) mirovinskih planova"] },
+    { zemlja: "🇳🇱 Nizozemska", kod: "NL", mercer: "A (85,4)", score: 85.4, boja: C.blue,
+      opis: "Državna osnovna mirovina (AOW) za sve, kvazi-obvezne strukovne mirovine preko poslodavaca i dobrovoljna štednja. Strukovni fondovi prelaze na nove ugovore do 2028.",
+      doprinos: "Visok, većinom poslodavac", dob: "67 (67 i 3 mj. od 2028.)",
+      prednosti: ["Gotovo svi zaposleni u strukovnim planovima", "Visoke mirovine u odnosu na plaće", "Najbolji ukupni rezultat"],
+      slabosti: ["Visoki troškovi doprinosa", "Složena reforma sustava"] },
+    { zemlja: "🇮🇸 Island", kod: "IS", mercer: "A (84,0)", score: 84.0, boja: "#003897",
+      opis: "Državna mirovina uz obvezne strukovne fondove u koje se uplaćuje najmanje 15,5 % plaće.",
+      doprinos: "min. 15,5 % (4 % radnik + 11,5 % poslodavac)", dob: "67",
+      prednosti: ["Visoka obvezna kapitalizirana štednja", "Dobra održivost"],
+      slabosti: ["Malo tržište osjetljivo na vanjske šokove"] },
+    { zemlja: "🇩🇰 Danska", kod: "DK", mercer: "A (82,3)", score: 82.3, boja: "#c41e3a",
+      opis: "Državna osnovna mirovina (Folkepension), obvezni ATP za sve zaposlene i strukovne mirovine iz kolektivnih ugovora.",
+      doprinos: "Strukovne ~12–15 % + ATP", dob: "67, raste s očekivanim trajanjem života (68 od 2030.)",
+      prednosti: ["Visoka pokrivenost zaposlenih", "Dob umirovljenja vezana uz trajanje života"],
+      slabosti: ["Visoki porezi za financiranje", "Sve kasnije umirovljenje"] },
+    { zemlja: "🇸🇬 Singapur", kod: "SG", mercer: "A (80,8)", score: 80.8, boja: "#EF3340",
+      opis: "CPF: obvezni osobni račun za mirovinu, zdravstvo i stanovanje. Za račune namijenjene mirovini država jamči minimalnu kamatu oko 4 %.",
+      doprinos: "do 37 % (20 % radnik + 17 % poslodavac, do 55 god.)", dob: "63 (isplata CPF-a od 65)",
+      prednosti: ["Zajamčena minimalna kamata na mirovinske račune", "Kapital je nasljediv"],
+      slabosti: ["Vrlo visoki doprinosi", "Ograničena fleksibilnost"] },
+    { zemlja: "🇦🇺 Australija", kod: "AU", mercer: "B+ (77,6)", score: 77.6, boja: "#00843D",
+      opis: "Superannuation: obvezna osobna štednja koju uplaćuje poslodavac, uz državnu Age Pension za one s manje imovine.",
+      doprinos: "12 % plaće (poslodavac, od 1.7.2025.)", dob: "67",
+      prednosti: ["Kapital je osobna i nasljediva imovina", "Porezne olakšice"],
+      slabosti: ["Tržišni rizik snosi pojedinac", "Niže mirovine za niske plaće"] },
   ];
 
-  const chartData = sustavi.map(s => ({
-    name: s.zemlja.split(" ")[1],
-    score: s.score,
-    stopa: Math.round(s.stopa * 100),
-    fill: s.boja,
-  }));
-
+  const chartData = sustavi.map(s => ({ name: s.zemlja.split(" ")[1], score: s.score, fill: s.boja }));
   const [selected, setSelected] = useState("HR");
-
   const sel = sustavi.find(s => s.kod === selected) || sustavi[0];
 
   return (
     <div className="fadeIn">
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, marginBottom: 4 }}>Svjetski najuspješniji mirovinski sustavi</h2>
-        <p style={{ color: C.slateL, fontSize: 13 }}>Mercer CFA Global Pension Index 2025 · OECD Pensions at a Glance 2025</p>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 22, marginBottom: 4 }}>Hrvatska i najbolji mirovinski sustavi</h2>
+        <p style={{ color: C.slateL, fontSize: 13 }}>Mercer CFA Institute Global Pension Index 2025 (52 sustava)</p>
       </div>
 
-      {/* Kontekst */}
-      <div style={{ background: `linear-gradient(135deg, ${C.navy}, #1a3566)`, borderRadius: 14,
-        padding: "20px 24px", marginBottom: 20, color: "#fff" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
-          {[
-            { v: "85.4", l: "Nizozemska — svjetski #1 (Mercer 2025)", c: C.goldL },
-            { v: "63%", l: "OECD prosjek neto stope zamjene", c: "#7fbcff" },
-            { v: "38%", l: "Hrvatska stopa zamjene (samo I. stup)", c: "#ff9090" },
-            { v: "~50%", l: "HR s II. stupom i dodatkom 27%", c: "#9fefc0" },
-          ].map((it,i) => (
-            <div key={i} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: it.c, fontFamily: "'Playfair Display',serif", lineHeight: 1 }}>{it.v}</div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 6, lineHeight: 1.4 }}>{it.l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <Ukratko color={C.blue}>
+        Mercer svake godine ocjenjuje mirovinske sustave prema primjerenosti mirovina, održivosti i nadzoru. Hrvatska je 2025.
+        dobila ocjenu <strong>B (68,7 bodova)</strong>. Najbolje ocijenjeni sustavi imaju više obvezne štednje: Nizozemska,
+        Island i Danska kroz strukovne mirovine preko poslodavaca. Pouka za vas: uz I. i II. stup dodatna štednja (III. stup)
+        bitno podiže mirovinu.
+      </Ukratko>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 20 }}>
         <Card>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Mercer skor i stopa zamjene po sustavima</div>
-          <ResponsiveContainer width="100%" height={200}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Mercer ocjena 2025. (bodovi)</div>
+          <ResponsiveContainer width="100%" height={210}>
             <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
               <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} domain={[0,100]} />
-              <Tooltip formatter={(v,n) => [n==="score" ? `${v} bod.` : `${v}%`, n==="score" ? "Mercer skor" : "Stopa zamjene"]} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="score" name="Mercer skor" radius={[4,4,0,0]}>
-                {chartData.map((d,i) => <Cell key={i} fill={d.fill} opacity={0.9} />)}
+              <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
+              <Tooltip formatter={v => [`${String(v).replace(".", ",")} bodova`, "Mercer"]} />
+              <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                {chartData.map((d, i) => <Cell key={i} fill={d.fill} opacity={0.9} />)}
               </Bar>
-              <Bar dataKey="stopa" name="Stopa zamjene %" fill={C.navy+"44"} radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
 
         <Card>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Odaberite sustav za detalje</div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Odaberite sustav</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {sustavi.map(s => (
               <button key={s.kod} onClick={() => setSelected(s.kod)} style={{
-                padding: "5px 12px", border: `2px solid ${selected===s.kod ? s.boja : C.border}`,
-                borderRadius: 20, background: selected===s.kod ? s.boja : C.white,
-                color: selected===s.kod ? "#fff" : C.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                padding: "5px 12px", border: `2px solid ${selected === s.kod ? s.boja : C.border}`,
+                borderRadius: 20, background: selected === s.kod ? s.boja : C.white,
+                color: selected === s.kod ? "#fff" : C.navy, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                 {s.zemlja}
               </button>
             ))}
           </div>
-          {sel && (
-            <div style={{ background: sel.boja+"0a", border: `1.5px solid ${sel.boja}22`, borderRadius: 10, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>{sel.zemlja}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: sel.boja,
-                  background: sel.boja+"18", padding: "2px 9px", borderRadius: 10 }}>Mercer {sel.mercer}</span>
+          <div style={{ background: sel.boja + "0a", border: `1.5px solid ${sel.boja}22`, borderRadius: 10, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{sel.zemlja}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: sel.boja, background: sel.boja + "18", padding: "2px 9px", borderRadius: 10 }}>Mercer {sel.mercer}</span>
+            </div>
+            <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 10 }}>{sel.opis}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <div style={{ background: C.bg, borderRadius: 7, padding: "7px 10px" }}>
+                <div style={{ fontSize: 10, color: C.slateL }}>Doprinosi</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{sel.doprinos}</div>
               </div>
-              <p style={{ fontSize: 12, color: C.slate, lineHeight: 1.7, marginBottom: 10 }}>{sel.opis}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                <div style={{ background: C.bg, borderRadius: 7, padding: "7px 10px" }}>
-                  <div style={{ fontSize: 10, color: C.slateL }}>Stopa zamjene</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: sel.boja }}>{sel.opis_stopa}</div>
-                </div>
-                <div style={{ background: C.bg, borderRadius: 7, padding: "7px 10px" }}>
-                  <div style={{ fontSize: 10, color: C.slateL }}>Doprinos (ukupno)</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{sel.doprinos}</div>
-                </div>
-                <div style={{ background: C.bg, borderRadius: 7, padding: "7px 10px" }}>
-                  <div style={{ fontSize: 10, color: C.slateL }}>Dob umirovljenja</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{sel.dob}</div>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: C.green, marginBottom: 4 }}>✅ Prednosti</div>
-                  {sel.prednosti.map((p,i) => <div key={i} style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>• {p}</div>)}
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: C.red, marginBottom: 4 }}>⚠ Slabosti</div>
-                  {sel.slabosti.map((s,i) => <div key={i} style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>• {s}</div>)}
-                </div>
+              <div style={{ background: C.bg, borderRadius: 7, padding: "7px 10px" }}>
+                <div style={{ fontSize: 10, color: C.slateL }}>Dob umirovljenja</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{sel.dob}</div>
               </div>
             </div>
-          )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.green, marginBottom: 4 }}>✅ Prednosti</div>
+                {sel.prednosti.map((p, i) => <div key={i} style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>• {p}</div>)}
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.red, marginBottom: 4 }}>⚠ Slabosti</div>
+                {sel.slabosti.map((s, i) => <div key={i} style={{ fontSize: 11, color: C.slate, lineHeight: 1.5 }}>• {s}</div>)}
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
 
-      {/* Usporedba za vaše podatke */}
       <Card style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 14 }}>Kako bi izgledala vaša mirovina u različitim sustavima</h3>
+        <h3 style={{ fontSize: 14, marginBottom: 14 }}>Koliko je mirovina u odnosu na plaću u Hrvatskoj (vaš primjer)</h3>
         <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1 }}>
-            <MiniSlider label="Bruto plaća" value={placha} min={800} max={4000} step={50}
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <MiniSlider label="Bruto plaća" value={placha} min={MIN_PLACA} max={5000} step={50}
               format={v => `${v.toLocaleString("hr-HR")} EUR/mj.`} onChange={setPlacha} color={C.navy} />
           </div>
-          <div style={{ flex: 1 }}>
-            <MiniSlider label="Godina rada (staž)" value={stazGod} min={15} max={45} step={1}
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <MiniSlider label="Godine staža (sve u oba stupa)" value={stazGod} min={15} max={45} step={1}
               format={v => `${v} god.`} onChange={setStazGod} color={C.navy} />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           {[
-            { l: "🇭🇷 HR (sadašnji sustav)", v: hr_uk, s: hr_stopa, c: C.red, note: "I. + Dod. + II." },
-            { l: "🇳🇱 NL model (96% neto)", v: placha * 0.96, s: 0.96, c: C.blue, note: "AOW + strukovne" },
-            { l: "🇩🇰 DK model (~80% neto)", v: placha * 0.80, s: 0.80, c: "#c41e3a", note: "Folkepension + ATP + LifF" },
-            { l: "🇮🇸 IS model (~95%)", v: placha * 0.95, s: 0.95, c: "#003897", note: "Državna + obavezna kapital." },
-            { l: "🇦🇺 AU model (~52%)", v: placha * 0.52, s: 0.52, c: "#00843D", note: "Age Pension + Super" },
-            { l: "🇸🇬 SG model (~65%)", v: placha * 0.65, s: 0.65, c: "#EF3340", note: "CPF (zajamčeni prinos 4%)" },
-          ].map((it,i) => (
-            <div key={i} style={{ background: it.c+"0a", border: `1.5px solid ${it.c}22`,
-              borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: C.slate, marginBottom: 4, lineHeight: 1.4 }}>{it.l}</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: it.c, fontFamily: "'Playfair Display',serif" }}>{fmt(it.v)} EUR</div>
-              <div style={{ fontSize: 10, color: C.slateL, marginTop: 2 }}>{pct(it.s)} bruto plaće</div>
-              <div style={{ fontSize: 9, color: C.slateL, opacity: 0.7, marginTop: 2 }}>{it.note}</div>
+            { l: "Mirovina bruto (I. + II.)", v: `${fmt(hr_k.ukupno)} EUR` },
+            { l: "Neto 2026.", v: `${fmt(hr_neto)} EUR` },
+            { l: "U odnosu na bruto plaću", v: pct(hr_stopa) },
+          ].map(it => (
+            <div key={it.l} style={{ background: C.bg, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: C.slateL, marginBottom: 4 }}>{it.l}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, fontFamily: "'Playfair Display',serif" }}>{it.v}</div>
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 14, padding: "10px 14px", background: C.amberL, borderRadius: 9,
-          fontSize: 11, color: C.amber, lineHeight: 1.6 }}>
-          ⚠ Ovo su aproksimacije na temelju OECD podataka i objavljenih stopa zamjene. Stvarni iznosi
-          u svakom sustavu ovise o konkretnim pravilima, godinama rada, visini doprinosa i tržišnim prinosima.
-          Izvor: Mercer CFA Global Pension Index 2025 · OECD Pensions at a Glance 2025.
+        <div style={{ marginTop: 10, fontSize: 11, color: C.slateL, lineHeight: 1.6 }}>
+          Pretpostavke: plaća jednaka cijeli radni vijek, cijeli staž u oba stupa, prinos II. stupa 5,5 %, 20 % kapitala podignuto jednokratno.
         </div>
       </Card>
 
-      {/* Ključne lekcije */}
-      <Card>
-        <h3 style={{ fontSize: 14, marginBottom: 14 }}>🎓 Što možemo naučiti od boljih sustava?</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {[
-            { emoji: "💰", t: "Visoke obavezne stope doprinosa", opis: "NL: 28%, IS: 23.5%, SG: 37%. HR ukupno 20%. Viši doprinosi = više mirovine. Pitanje je tko ih snosi i koliko to usporava ekonomiju.", boja: C.blue },
-            { emoji: "🏗", t: "Obavezne strukovne mirovine", opis: "Nizozemska i Danska osiguravaju gotovo 100% radnika kroz obavezne kolektivne ugovore. HR ima samo I. i II. stup — bez kolektivnih strukovnih planova.", boja: C.purple },
-            { emoji: "📈", t: "Zajamčeni minimalni prinos", opis: "Singapurski CPF jamči 4% prinos godišnje čak i u lošim godinama. HR fondovi nemaju takvo jamstvo — prinos može biti negativan.", boja: C.green },
-            { emoji: "⚖️", t: "Automatska usklađenost s demografijom", opis: "Danska i Islanda pomiču dob umirovljenja automatski s rastom očekivanog vijeka. HR ima fiksnu dob — demografska bomba tihuje.", boja: C.gold },
-            { emoji: "👨‍👩‍👧", t: "Nasljedivost kapitala", opis: "Australija (Super) i Singapur (CPF) — kapital je u potpunosti nasljediv. HR II. stup — nasljediv samo uz uvjete. I. stup — nenasljediv.", boja: C.red },
-            { emoji: "🔄", t: "Kombinacija solidarnosti + kapitalizacije", opis: "Svi vodeći sustavi imaju i solidarnu komponentu (osnovna mirovina za sve) i kapitalziranu (osobna štednja). HR ima oba, ali oba su slabija od nordijskih modela.", boja: C.navy },
-          ].map((it,i) => (
-            <div key={i} style={{ background: it.boja+"08", border:`1px solid ${it.boja}22`, borderRadius:9, padding:"12px 14px" }}>
-              <div style={{ fontSize:18, marginBottom:6 }}>{it.emoji}</div>
-              <div style={{ fontSize:12, fontWeight:700, color:C.navy, marginBottom:4 }}>{it.t}</div>
-              <div style={{ fontSize:11, color:C.slate, lineHeight:1.6 }}>{it.opis}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <Detalji naslov="Što možemo naučiti od boljih sustava?">
+        <ul style={{ fontSize: 12, color: C.slate, lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
+          <li><strong>Više obvezne štednje:</strong> Island najmanje 15,5 % plaće, Singapur do 37 %, Australija 12 % (poslodavac), Hrvatska 5 % u II. stupu.</li>
+          <li><strong>Strukovne mirovine:</strong> u Nizozemskoj i Danskoj gotovo svi zaposleni štede preko poslodavca. U Hrvatskoj postoje zatvoreni
+            dobrovoljni fondovi poslodavaca, ali ih koristi malo ljudi. Poslodavac vam može uplaćivati do 804 EUR godišnje bez poreza.</li>
+          <li><strong>Dob umirovljenja i trajanje života:</strong> Danska povezuje dob umirovljenja s očekivanim trajanjem života; u Hrvatskoj je dob propisana zakonom.</li>
+          <li><strong>Zajamčeni prinos:</strong> Singapur jamči minimalnu kamatu na mirovinske račune; hrvatski fondovi nemaju jamstvo prinosa.</li>
+        </ul>
+      </Detalji>
     </div>
   );
 }
@@ -5116,12 +4977,12 @@ function VodicView() {
   const profili = [
     { range: [18,29], label: "18–29 god.", emoji: "🌱", color: C.green,
       naslov: "Mladi radnik — zlatno doba za početak",
-      subtitle: "Svaka godina štednje sada vrijedi 3× više nego u 40-im",
+      subtitle: "Što ranije počnete štedjeti, to više za vas radi složena kamata",
       koraci: [
         { emoji: "✅", t: "Provjeri je li poslodavac prijavio u II. stup", opis: "Provjeri e-Građani / REGOS portal da li se svaki mjesec uplaćuje 5% bruto na tvoj osobni račun. Ako ne — poslodavac krši zakon.", hitno: true },
-        { emoji: "📂", t: "Odaberi OMF kategoriju A", opis: "Fond kategorije A (visoki udio dionica) je optimalan za mlade — imaš 35+ godina do mirovine da prebrodeš sve tržišne padove. Ako te REGOS rasporedio u A automatski, ostani.", hitno: false },
+        { emoji: "📂", t: "Razmisli o kategoriji A", opis: "Ako ne izabereš, REGOS te raspoređuje u kategoriju B. Kategorija A ima više dionica: veće oscilacije, ali dugoročno viši očekivani prinos. S 30+ godina do mirovine imaš vremena prebroditi padove.", hitno: false },
         { emoji: "🌱", t: "Otvori III. stup ODMAH", opis: `Uplati samo 55,30 EUR/mj. (663,61 EUR/god.) i dobij maksimalni DPS od 99,54 EUR/god. Ukupno s prinosom: na 40 god. to je ~${fmt(calcStup2FV({bruto_placa:55.3*20,god_stednje:40,neto_prinos:0.055}))} EUR.`, hitno: true },
-        { emoji: "📊", t: "Razumi PVB — pregovaraj o plaći!", opis: "Svaki % povećanja plaće povećava tvoj PVB i buduću mirovinu. Plaća od 2.000 EUR vs 1.300 EUR = PVB 1,54 vs 1,00 = gotovo 54% veća mirovina.", hitno: false },
+        { emoji: "📊", t: "Razumi PVB — pregovaraj o plaći!", opis: "Svaki % povećanja plaće povećava tvoj PVB i buduću mirovinu. Plaća od 3.000 EUR vs prosjek 2.016 EUR = PVB 1,49 vs 1,00 = oko 49 % veća mirovina iz I. stupa.", hitno: false },
         { emoji: "🔍", t: "Provjeri stanje računa jednom godišnje", opis: "e-Građani → REGOS → Moj mirovinski račun. Provjeri ukupan kapital, uplate, prinos i historiju.", hitno: false },
       ],
     },
@@ -5131,9 +4992,9 @@ function VodicView() {
       koraci: [
         { emoji: "📈", t: "Analiziraj PVB kretanje", opis: "HZMO može dati informativni izračun mirovine s trenutnim PVB-om. Ako si napredovao u karijeri i plaća ti raste, PVB raste — ali provjeri.", hitno: false },
         { emoji: "🏠", t: "Razmotri balans: mirovina vs. nekretnina vs. investicije", opis: "Nekretnina, ETF-ovi i dionice nisu mirovinska štednja — ali mogu biti dodatni izvor prihoda (najam, dividende, prodaja udjela) u mirovini. Dugoročno ulaganje u globalne ETF-ove (npr. preko brokera) nudi veću likvidnost i diverzifikaciju od nekretnine, uz slično ili veće dugoročno povećanje. Nemoj zanemariti financijsku mirovinu (II. i III. stup) dok ulažeš u nekretninu ili portfelj dionica/ETF-ova.", hitno: false },
-        { emoji: "🌱", t: "Maksimiziran III. stup", opis: "Ako imaš poslodavca koji uplaćuje u III. stup — to je povećanje plaće bez poreza. Do 804 EUR/god. od poslodavca neoporezivo.", hitno: true },
+        { emoji: "🌱", t: "Iskoristi III. stup preko poslodavca", opis: "Ako imaš poslodavca koji uplaćuje u III. stup — to je povećanje plaće bez poreza. Do 804 EUR/god. od poslodavca neoporezivo.", hitno: true },
         { emoji: "📊", t: "Kalkulator: koliko mi nedostaje?", opis: "Koristi tab 'Planer' u ovoj aplikaciji. Unesi željenu mirovinu i vidi točno koliko treba prilagoditi štednju, plaću ili datum umirovljenja.", hitno: false },
-        { emoji: "🔄", t: "Provjeri kategoriju OMF", opis: "REGOS automatski prebacuje iz A u B 15 god. nakon prvog zaposlenja. Provjeri jesi li u pravoj kategoriji za svoju dob i procijeni.", hitno: false },
+        { emoji: "🔄", t: "Provjeri kategoriju OMF", opis: "Ako ne izabereš, REGOS te raspoređuje u kategoriju B. Uz više od 10 godina do mirovine kategorija A dugoročno nosi veći očekivani prinos, ali i veće oscilacije. Provjeri na regos.hr.", hitno: false },
         { emoji: "👶", t: "Porodiljni dopust = mirovinski staž!", opis: "Od 1.7.2025. majci (ili posvojiteljici) se za svako dijete automatski dodaje 12 mj. mirovinskog staža. Provjeri da je HZMO ispravno evidentirao.", hitno: false },
       ],
     },
@@ -5141,10 +5002,10 @@ function VodicView() {
       naslov: "Pred-mirovinski period — zaštita i prijelaz",
       subtitle: "Počnite smanjivati investicijski rizik i planirati isplatu",
       koraci: [
-        { emoji: "🔄", t: "Prelazak OMF kategorije A → B", opis: "Ako još imaš visok udio dionica (kategorija A), razmotri prelazak u B. REGOS to automatski radi za tko do mirovine ima <5 god., ali možeš i ranije.", hitno: true },
+        { emoji: "🔄", t: "Prelazak OMF kategorije A → B", opis: "Kad do mirovine ostane manje od 10 godina, REGOS te iz kategorije A prebacuje u B (na zahtjev možeš ostati u A do 5 godina prije mirovine). U zadnjih 5 godina razmisli o kategoriji C.", hitno: true },
         { emoji: "📋", t: "Informativni izračun mirovine na HZMO", opis: "Podnesi zahtjev za informativni izračun na mojamirovina.hr (e-Građani). Vidjet ćeš točan PVB, staž i projiciranu mirovinu.", hitno: true },
-        { emoji: "⚖️", t: "Analiziraj: istup ili kombinirana mirovina?", opis: "Ako imaš manje od 10 god. u II. stupu ili si ušao dobrovoljno 2002. (bio si 40–50 god.), procijeni isplati li se istup. Razlika može biti značajna.", hitno: false },
-        { emoji: "🌱", t: "Intenzivni III. stup ove dekade", opis: "10 godina aktivne štednje uz DPS sada, uz prinos, može dodati 20.000–40.000 EUR kapitala koji je dostupan od 55. god.", hitno: false },
+        { emoji: "⚖️", t: "Samo I. stup ili I. + II.?", opis: "Pri umirovljenju svatko u oba stupa bira između mirovine samo iz I. stupa i mirovine iz oba stupa. Isprobaj kalkulator „Samo I. ili I. + II.“ sa stanjem svog računa u II. stupu.", hitno: false },
+        { emoji: "🌱", t: "Pojačaj III. stup ove dekade", opis: `Npr. 150 EUR mjesečno kroz 10 godina uz državni poticaj i 5 % prinosa daje oko ${fmt(calcStup2FV({bruto_placa: (150 + 99.54/12) * 20, god_stednje: 10, neto_prinos: 0.05}), 0)} EUR. Novac je dostupan od 55. godine.`, hitno: false },
         { emoji: "💼", t: "Planiranje dohotka od imovine u mirovini", opis: "Nekretnine, dividende, umirovljenički fond — planirajte sve izvore prihoda, ne samo državnu mirovinu.", hitno: false },
       ],
     },
@@ -5152,18 +5013,29 @@ function VodicView() {
       naslov: "Finalna ravnina — maksimizacija i odluke",
       subtitle: "Svaka godina rada sada vrijedi više nego ikad",
       koraci: [
-        { emoji: "⏳", t: "Razmotri odgodu — +0,45% po mjesecu!", opis: "Svaki dodatni mjesec rada = trajno +0,45% mirovine. 24 mj. odgode = +10,8% mirovine zauvijek. Promijenite datum samo ako zdravlje i financije to dopuštaju.", hitno: false },
-        { emoji: "🏦", t: "Istraži MOD-ove i vrstu mirovine", opis: "Usporedite 4 registrirana MOD-a. Odaberite vrstu mirovine PAŽLJIVO — ona je nepromijenljiva. Ako imate supružnika, razmotrite zajedničku mirovinu ili zajamčeno razdoblje", hitno: true },
-        { emoji: "💵", t: "Isplativa jednokratna isplata 20%?", opis: "Provjeri uvjet: I. stup mirovina mora biti > najniža mirovina. 20% kapitala sada vs. viša renta — ovisi o vašim potrebama i zdravlju.", hitno: false },
-        { emoji: "💰", t: "Iskoristite III. stup od 55. god.", opis: "III. stup je dostupan od 55. bez obzira radite li. Možete povući dio, sav ili ga prebaciti u redovnu isplatu.", hitno: true },
+        { emoji: "⏳", t: "Razmotri odgodu — +0,45 % po mjesecu", opis: "Svaki mjesec rada nakon zakonske dobi trajno povećava mirovinu iz I. stupa za 0,45 % (24 mj. = +10,8 %), uz dodatni staž. Odluka ovisi o zdravlju i financijama.", hitno: false },
+        { emoji: "🏦", t: "Istraži MOD-ove i vrstu mirovine", opis: "Usporedite ponude oba MOD-a (Hrvatski MOD i Raiffeisen MOD). Vrsta mirovine se poslije ne može promijeniti. Ako imate bračnog druga, razmotrite obiteljsku mirovinu ili zajamčeno razdoblje.", hitno: true },
+        { emoji: "⚖️", t: "Samo I. stup ili I. + II.?", opis: "Najvažnija odluka pri umirovljenju. Zatražite informativni izračun obje mogućnosti i usporedite u kalkulatoru „Samo I. ili I. + II.“.", hitno: true },
+        { emoji: "💵", t: "Jednokratna isplata do 20 %?", opis: "Moguća ako je osnovna mirovina iz I. stupa veća od 115 % najniže. Više podignuto sada znači nižu doživotnu mirovinu iz II. stupa.", hitno: false },
+        { emoji: "💰", t: "III. stup je dostupan od 55. godine", opis: "Pravo na isplatu imate s 55 godina, bez obzira radite li. Načine isplate provjerite kod svog dobrovoljnog fonda.", hitno: false },
         { emoji: "📋", t: "Prijavite se HZMO-u najmanje 3 mj. unaprijed", opis: "Postupak ostvarivanja prava traje — nemojte čekati zadnji tren. Zahtjev za starosnu mirovinu podnosi se u nadležnoj ispostavi HZMO-a ili e-Građani.", hitno: true },
-        { emoji: "📄", t: "Provjerite sve radne knjižice i staž", opis: "Svaki neevidentirani staž (stari podaci iz SFR), vojska, bolovanje — treba biti u HZMO evidenciji. Greška sada košta zauvijek.", hitno: true },
+        { emoji: "📄", t: "Provjerite sve radne knjižice i staž", opis: "Svaki neevidentirani staž (stari podaci, vojni rok) treba biti u evidenciji HZMO-a. Elektronički zapis (e-radna knjižica) vidite u e-Građanima.", hitno: true },
+      ],
+    },
+    { range: [65,75], label: "65+ god.", emoji: "🌅", color: C.navy,
+      naslov: "U mirovini ili pred samim odlaskom",
+      subtitle: "Iskoristite prava koja vam pripadaju",
+      koraci: [
+        { emoji: "💼", t: "Rad uz mirovinu", opis: "Od 1.1.2026. nakon 65. godine možete raditi i više od pola radnog vremena; tada se isplaćuje 50 % mirovine. Uz rad do pola radnog vremena mirovina se isplaćuje u cijelosti.", hitno: false },
+        { emoji: "🎁", t: "Godišnji dodatak na mirovinu", opis: "Svaki prosinac HZMO isplaćuje godišnji dodatak: za 2026. iznosi 6 EUR po godini staža (npr. 40 god. = 240 EUR). Zahtjev nije potreban.", hitno: false },
+        { emoji: "👫", t: "Dio obiteljske mirovine", opis: "Ako ste udovica ili udovac s vlastitom mirovinom, uz nju možete primati i 27 % obiteljske mirovine (uz uvjete). Provjerite kod HZMO-a.", hitno: true },
+        { emoji: "📉", t: "Prijevremena mirovina — penal prestaje sa 70", opis: "Ako ste otišli u prijevremenu mirovinu, HZMO s navršenih 70 godina sam ukida smanjenje i mirovina raste.", hitno: false },
+        { emoji: "💶", t: "Porez na mirovinu", opis: "Vlada predlaže ukidanje poreza na mirovine od 1.1.2027. Do tada umirovljenici plaćaju pola obračunatog poreza, a mirovine do 600 EUR ne plaćaju porez.", hitno: false },
       ],
     },
   ];
 
   const profil = profili.find(p => dob >= p.range[0] && dob <= p.range[1]) || profili[1];
-  const dobDo = Math.max(0, (profil === profili[3] ? 65 : profil.range[1] + 1) - dob);
 
   return (
     <div className="fadeIn">
@@ -5179,7 +5051,7 @@ function VodicView() {
           <span style={{ fontSize: 22, fontWeight: 800, color: profil.color,
             fontFamily: "'Playfair Display',serif" }}>{dob} god.</span>
         </div>
-        <RangeTrack value={dob} min={18} max={64} step={1} color={profil.color}
+        <RangeTrack value={dob} min={18} max={75} step={1} color={profil.color}
           onChange={setDob} />
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, gap: 6 }}>
           {profili.map(p => (
@@ -5389,13 +5261,13 @@ export default function App() {
       {/* AVM Banner */}
       <div style={{ background: `linear-gradient(135deg, ${C.gold}cc, ${C.goldL}aa)`, padding: "8px 24px", fontSize: 12, color: C.navy, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
         <strong>📊 Aktualni podaci (HZMO):</strong>
-        <span>AVM od 1.7.2025. = <strong>14,45 EUR</strong></span>
+        <span>AVM od {AVM_DATUM} = <strong>{fmt(AVM)} EUR</strong></span>
         <span>|</span>
         <span>Doprinos II. stupa = <strong>5% bruto</strong></span>
         <span>|</span>
-        <span>Najniža mirovina (2026.) = <strong>15,73 EUR × staž</strong></span>
+        <span>Najniža mirovina = <strong>{fmt(AVM * MIN_MIROVINA_FAKTOR)} EUR × godine staža</strong></span>
         <span>|</span>
-        <span>Naknada OMF (2025.) = <strong>0,24% god.</strong></span>
+        <span>Prosječna bruto plaća (2025.) = <strong>{fmt(PROSJ_BRUTO, 0)} EUR</strong></span>
         {!user && (
           <>
             <span>|</span>
@@ -5424,7 +5296,7 @@ export default function App() {
       {/* Footer */}
       <footer style={{ background: C.navy, color: "rgba(255,255,255,0.5)", padding: "18px 24px", textAlign: "center", fontSize: 11, lineHeight: 1.8 }}>
         <strong style={{ color: "rgba(255,255,255,0.8)" }}>Mirovinski Sustav HR</strong> — isključivo informativna platforma<br />
-        Izvor: HZMO (mirovinsko.hr) · HANFA · mss.gov.hr · ZOMO · ZOMF · AVM 14,45 EUR od 1.7.2025.<br />
+        Izvor: HZMO (mirovinsko.hr) · HANFA · mss.gov.hr · ZOMO · ZOMF · AVM {fmt(AVM)} EUR od {AVM_DATUM} · Podaci ažurirani: {PODACI_AZURIRANI}<br />
         ⚠ Kalkulatori su aproksimativni. Za točan izračun koristite mojamirovina.hr ili se obratite HZMO-u.
       </footer>
     </div>
